@@ -1,4 +1,3 @@
-storage_virtual_node.py
 import time
 import math
 from dataclasses import dataclass
