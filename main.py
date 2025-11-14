@@ -14,7 +14,6 @@ def display_node_stats(node: StorageVirtualNode):
     print(f"Node: {node.node_id}")
     print(f"  Storage: {storage['used_bytes'] / (1024**2):.2f} MB / {storage['total_bytes'] / (1024**2):.2f} MB ({storage['utilization_percent']:.2f}%)")
     print(f"  Files Stored: {storage['files_stored']}")
-    print(f"  Active Transfers: {storage['active_transfers']}")
     print(f"  Network Usage: {network['utilization_percent']:.2f}%")
     print(f"  Total Requests Processed: {perf['total_requests_processed']}")
     print(f"  Total Data Transferred: {perf['total_data_transferred_bytes'] / (1024**2):.2f} MB")
@@ -29,101 +28,136 @@ def display_network_stats(network: StorageVirtualNetwork):
     print(f"  Bandwidth Usage: {stats['bandwidth_utilization']:.2f}%")
     print(f"  Active Transfers: {stats['active_transfers']}")
 
+def get_user_input():
+    """Get simulation parameters from user"""
+    print("="*70)
+    print("STORAGE VIRTUAL NETWORK SIMULATOR - INTERACTIVE MODE")
+    print("="*70)
+    
+    # Get file size
+    while True:
+        try:
+            file_size_mb = int(input("\nEnter file size (in MB, 1-500): "))
+            if 1 <= file_size_mb <= 500:
+                break
+            print("  ⚠ Please enter a value between 1 and 500 MB")
+        except ValueError:
+            print("  ⚠ Please enter a valid number")
+    
+    # Get bandwidth
+    while True:
+        try:
+            bandwidth = int(input("Enter bandwidth (in Mbps, 10-1000): "))
+            if 10 <= bandwidth <= 1000:
+                break
+            print("  ⚠ Please enter a value between 10 and 1000 Mbps")
+        except ValueError:
+            print("  ⚠ Please enter a valid number")
+    
+    # Get number of transfers
+    while True:
+        try:
+            num_transfers = int(input("Enter number of file transfers (1-5): "))
+            if 1 <= num_transfers <= 5:
+                break
+            print("  ⚠ Please enter a value between 1 and 5")
+        except ValueError:
+            print("  ⚠ Please enter a valid number")
+    
+    return file_size_mb, bandwidth, num_transfers
+
 def simulate_file_transfers():
     """Main simulation function"""
-    print("="*70)
-    print("STORAGE VIRTUAL NETWORK SIMULATOR")
-    print("="*70)
+    
+    # Get user input
+    file_size_mb, bandwidth, num_transfers = get_user_input()
+    file_size_bytes = file_size_mb * 1024 * 1024
+    
+    print_separator()
     
     # Create network
+    print("[1] Creating network nodes...")
     network = StorageVirtualNetwork()
     
-    # Create nodes with different capacities
-    print("\n[1] Creating network nodes...")
-    node1 = StorageVirtualNode("Node-A", cpu_capacity=4, memory_capacity=8, storage_capacity=50, bandwidth=100)
-    node2 = StorageVirtualNode("Node-B", cpu_capacity=8, memory_capacity=16, storage_capacity=100, bandwidth=200)
-    node3 = StorageVirtualNode("Node-C", cpu_capacity=4, memory_capacity=8, storage_capacity=75, bandwidth=150)
+    # Create nodes with user-specified bandwidth
+    node1 = StorageVirtualNode("Node-A", cpu_capacity=4, memory_capacity=8, 
+                                storage_capacity=500, bandwidth=bandwidth)
+    node2 = StorageVirtualNode("Node-B", cpu_capacity=8, memory_capacity=16, 
+                                storage_capacity=500, bandwidth=bandwidth)
+    node3 = StorageVirtualNode("Node-C", cpu_capacity=4, memory_capacity=8, 
+                                storage_capacity=500, bandwidth=bandwidth)
     
     network.add_node(node1)
     network.add_node(node2)
     network.add_node(node3)
     
-    print(f"  ✓ Created {node1.node_id}: {node1.total_storage / (1024**3):.0f} GB storage, {node1.bandwidth / 1000000:.0f} Mbps")
-    print(f"  ✓ Created {node2.node_id}: {node2.total_storage / (1024**3):.0f} GB storage, {node2.bandwidth / 1000000:.0f} Mbps")
-    print(f"  ✓ Created {node3.node_id}: {node3.total_storage / (1024**3):.0f} GB storage, {node3.bandwidth / 1000000:.0f} Mbps")
+    print(f"  ✓ Created {node1.node_id}: {bandwidth} Mbps bandwidth")
+    print(f"  ✓ Created {node2.node_id}: {bandwidth} Mbps bandwidth")
+    print(f"  ✓ Created {node3.node_id}: {bandwidth} Mbps bandwidth")
     
-    # Connect nodes
+    # Connect nodes with user-specified bandwidth
     print("\n[2] Establishing network connections...")
-    network.connect_nodes("Node-A", "Node-B", 100)
-    network.connect_nodes("Node-B", "Node-C", 150)
-    network.connect_nodes("Node-A", "Node-C", 80)
-    print("  ✓ Node-A ←→ Node-B (100 Mbps)")
-    print("  ✓ Node-B ←→ Node-C (150 Mbps)")
-    print("  ✓ Node-A ←→ Node-C (80 Mbps)")
+    network.connect_nodes("Node-A", "Node-B", bandwidth)
+    network.connect_nodes("Node-B", "Node-C", bandwidth)
+    network.connect_nodes("Node-A", "Node-C", bandwidth)
+    print(f"  ✓ All nodes connected with {bandwidth} Mbps links")
     
     print_separator()
     
-    # Simulate file transfers
-    print("[3] Starting file transfer simulations...")
+    # Define transfer routes
+    transfer_routes = [
+        ("Node-A", "Node-B", "dataset_1.csv"),
+        ("Node-A", "Node-C", "model_weights.pkl"),
+        ("Node-B", "Node-C", "training_data.zip"),
+        ("Node-C", "Node-A", "results.json"),
+        ("Node-B", "Node-A", "logs.txt")
+    ]
     
-    # Transfer 1: Node-A to Node-B
-    print("\n► Transfer 1: Node-A → Node-B (50 MB file)")
-    file_size_1 = 50 * 1024 * 1024  # 50 MB
-    transfer1 = network.initiate_file_transfer("Node-A", "Node-B", "dataset_1.csv", file_size_1)
+    # Perform transfers
+    print(f"[3] Starting {num_transfers} file transfer(s)...\n")
     
-    if transfer1:
-        print(f"  ✓ Transfer initiated: {transfer1.file_name} ({len(transfer1.chunks)} chunks)")
+    for i in range(num_transfers):
+        source, target, filename = transfer_routes[i]
         
-        # Process transfer in steps
-        while True:
-            chunks_done, completed = network.process_file_transfer("Node-A", "Node-B", transfer1.file_id, chunks_per_step=2)
-            if completed:
-                print(f"  ✓ Transfer completed!")
-                break
-            elif chunks_done > 0:
-                completed_chunks = sum(1 for c in transfer1.chunks if c.status.name == "COMPLETED")
-                print(f"  → Progress: {completed_chunks}/{len(transfer1.chunks)} chunks transferred")
-            time.sleep(0.1)  # Small delay for readability
-    
-    print_separator()
-    
-    # Transfer 2: Node-A to Node-C
-    print("► Transfer 2: Node-A → Node-C (30 MB file)")
-    file_size_2 = 30 * 1024 * 1024  # 30 MB
-    transfer2 = network.initiate_file_transfer("Node-A", "Node-C", "model_weights.pkl", file_size_2)
-    
-    if transfer2:
-        print(f"  ✓ Transfer initiated: {transfer2.file_name} ({len(transfer2.chunks)} chunks)")
+        print(f"► Transfer {i+1}: {source} → {target}")
+        print(f"  File: {filename} ({file_size_mb} MB)")
         
-        while True:
-            chunks_done, completed = network.process_file_transfer("Node-A", "Node-C", transfer2.file_id, chunks_per_step=3)
-            if completed:
-                print(f"  ✓ Transfer completed!")
-                break
-            elif chunks_done > 0:
-                completed_chunks = sum(1 for c in transfer2.chunks if c.status.name == "COMPLETED")
-                print(f"  → Progress: {completed_chunks}/{len(transfer2.chunks)} chunks transferred")
-            time.sleep(0.1)
-    
-    print_separator()
-    
-    # Transfer 3: Node-B to Node-C
-    print("► Transfer 3: Node-B → Node-C (80 MB file)")
-    file_size_3 = 80 * 1024 * 1024  # 80 MB
-    transfer3 = network.initiate_file_transfer("Node-B", "Node-C", "training_data.zip", file_size_3)
-    
-    if transfer3:
-        print(f"  ✓ Transfer initiated: {transfer3.file_name} ({len(transfer3.chunks)} chunks)")
+        # Start timing
+        start_time = time.time()
         
-        while True:
-            chunks_done, completed = network.process_file_transfer("Node-B", "Node-C", transfer3.file_id, chunks_per_step=2)
-            if completed:
-                print(f"  ✓ Transfer completed!")
-                break
-            elif chunks_done > 0:
-                completed_chunks = sum(1 for c in transfer3.chunks if c.status.name == "COMPLETED")
-                print(f"  → Progress: {completed_chunks}/{len(transfer3.chunks)} chunks transferred")
-            time.sleep(0.1)
+        # Initiate transfer
+        transfer = network.initiate_file_transfer(source, target, filename, file_size_bytes)
+        
+        if transfer:
+            total_chunks = len(transfer.chunks)
+            print(f"  Total chunks: {total_chunks}")
+            
+            # Process transfer (transfer all chunks at once for speed)
+            while True:
+                chunks_done, completed = network.process_file_transfer(
+                    source, target, transfer.file_id, chunks_per_step=total_chunks
+                )
+                if completed:
+                    break
+            
+            # Calculate transfer time
+            end_time = time.time()
+            transfer_time = end_time - start_time
+            
+            # Calculate theoretical transfer time
+            file_size_bits = file_size_bytes * 8
+            bandwidth_bps = bandwidth * 1_000_000
+            theoretical_time = file_size_bits / bandwidth_bps
+            
+            print(f"  ✓ Transfer completed!")
+            print(f"  ⏱  Actual time: {transfer_time:.3f} seconds")
+            print(f"  📊 Theoretical time: {theoretical_time:.3f} seconds")
+            print(f"  📈 Effective throughput: {(file_size_mb / transfer_time):.2f} MB/s")
+            
+        else:
+            print(f"  ✗ Transfer failed (insufficient storage or bandwidth)")
+        
+        print()
     
     print_separator()
     
