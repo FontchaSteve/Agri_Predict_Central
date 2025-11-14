@@ -152,7 +152,13 @@ def simulate_file_transfers():
             print(f"  ✓ Transfer completed!")
             print(f"  ⏱  Actual time: {transfer_time:.3f} seconds")
             print(f"  📊 Theoretical time: {theoretical_time:.3f} seconds")
-            print(f"  📈 Effective throughput: {(file_size_mb / transfer_time):.2f} MB/s")
+            
+            # Calculate throughput (avoid division by zero)
+            if transfer_time > 0:
+                throughput_mbps = (file_size_mb / transfer_time)
+                print(f"  📈 Effective throughput: {throughput_mbps:.2f} MB/s")
+            else:
+                print(f"  📈 Effective throughput: Instant (< 0.001s)")
             
         else:
             print(f"  ✗ Transfer failed (insufficient storage or bandwidth)")
