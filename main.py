@@ -1,4 +1,3 @@
-main.py
 from storage_virtual_network import StorageVirtualNetwork
 from storage_virtual_node import StorageVirtualNode
 
