@@ -26,7 +26,7 @@ class FileTransfer:
     total_size: int  # in bytes
     chunks: List[FileChunk]
     status: TransferStatus = TransferStatus.PENDING
-    created_at: float = time.time()
+    created_at: float = 0.0
     completed_at: Optional[float] = None
 
 class StorageVirtualNode:
@@ -108,7 +108,8 @@ class StorageVirtualNode:
             file_id=file_id,
             file_name=file_name,
             total_size=file_size,
-            chunks=chunks
+            chunks=chunks,
+            created_at=time.time()
         )
         
         self.active_transfers[file_id] = transfer
@@ -141,16 +142,16 @@ class StorageVirtualNode:
         if available_bandwidth <= 0:
             return False
         
-        # Calculate transfer time (in seconds)
+        # Calculate transfer time (in seconds) but DON'T sleep
         transfer_time = chunk_size_bits / available_bandwidth
-        time.sleep(transfer_time)  # Simulate transfer delay
+        # time.sleep(transfer_time)  # ← REMOVED THIS LINE FOR FAST SIMULATION
         
         # Update chunk status
         chunk.status = TransferStatus.COMPLETED
         chunk.stored_node = self.node_id
         
         # Update metrics
-        self.network_utilization += available_bandwidth * 0.8  # Simulate some fluctuation
+        self.network_utilization += available_bandwidth * 0.1  # Minimal fluctuation
         self.total_data_transferred += chunk.size
         
         # Check if all chunks are completed
@@ -188,7 +189,8 @@ class StorageVirtualNode:
                     stored_node=destination_node
                 )
                 for c in file_transfer.chunks
-            ]
+            ],
+            created_at=time.time()
         )
         
         return new_transfer
@@ -196,22 +198,21 @@ class StorageVirtualNode:
     def get_storage_utilization(self) -> Dict[str, Union[int, float, List[str]]]:
         """Get current storage utilization metrics"""
         return {
-            "used_bytes": self.used_storage,  # int
-            "total_bytes": self.total_storage,  # int
-            "utilization_percent": (self.used_storage / self.total_storage) * 100,  # float
-            "files_stored": len(self.stored_files),  # int
-            "active_transfers": len(self.active_transfers)  # int
-            # Note: Removed list[str] since the current implementation doesn't return any lists
+            "used_bytes": self.used_storage,
+            "total_bytes": self.total_storage,
+            "utilization_percent": (self.used_storage / self.total_storage) * 100 if self.total_storage > 0 else 0,
+            "files_stored": len(self.stored_files),
+            "active_transfers": len(self.active_transfers)
         }
 
     def get_network_utilization(self) -> Dict[str, Union[int, float, List[str]]]:
         """Get current network utilization metrics"""
         total_bandwidth_bps = self.bandwidth
         return {
-            "current_utilization_bps": self.network_utilization,  # float
-            "max_bandwidth_bps": total_bandwidth_bps,  # int
-            "utilization_percent": (self.network_utilization / total_bandwidth_bps) * 100,  # float
-            "connections": list(self.connections.keys())  # List[str]
+            "current_utilization_bps": self.network_utilization,
+            "max_bandwidth_bps": total_bandwidth_bps,
+            "utilization_percent": (self.network_utilization / total_bandwidth_bps) * 100 if total_bandwidth_bps > 0 else 0,
+            "connections": list(self.connections.keys())
         }
 
     def get_performance_metrics(self) -> Dict[str, int]:
