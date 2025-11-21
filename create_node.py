@@ -7,14 +7,13 @@ import sys
 from datetime import datetime
 
 class VirtualNode:
-    def __init__(self, node_name, storage_capacity, cpu_cores, memory, node_type, 
+    def __init__(self, node_name, storage_capacity, cpu_cores, memory,
                  hub_host='localhost', hub_port=5555):
         self.node_id = str(uuid.uuid4())[:8]
         self.node_name = node_name
         self.storage_capacity = storage_capacity
         self.cpu_cores = cpu_cores
         self.memory = memory
-        self.node_type = node_type
         self.hub_host = hub_host
         self.hub_port = hub_port
         self.socket = None
@@ -34,7 +33,6 @@ class VirtualNode:
                 'storage_capacity': self.storage_capacity,
                 'cpu_cores': self.cpu_cores,
                 'memory': self.memory,
-                'node_type': self.node_type,
                 'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             
@@ -179,7 +177,6 @@ if __name__ == "__main__":
         storage_capacity=config['storage_capacity'],
         cpu_cores=config['cpu_cores'],
         memory=config['memory'],
-        node_type=config['node_type'],
         hub_host=config['hub_host'],
         hub_port=config['hub_port']
     )
