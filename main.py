@@ -1,5 +1,5 @@
 import time
-from storage_virtual_network import StorageVirtualNetwork
+from storage_virtual_network import StorageVirtualNetwork8
 from storage_virtual_node import StorageVirtualNode
 
 def print_separator():
