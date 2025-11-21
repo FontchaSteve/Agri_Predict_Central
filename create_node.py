@@ -143,25 +143,8 @@ def get_user_input():
         except ValueError:
             print("[ERROR] Please enter a valid number")
     
-    print("\n[OPTIONS] Node types:")
-    print("  1. Storage Node")
-    print("  2. Compute Node")
-    print("  3. Gateway Node")
-    print("  4. Hybrid Node")
     
-    node_types = {
-        '1': 'Storage Node',
-        '2': 'Compute Node',
-        '3': 'Gateway Node',
-        '4': 'Hybrid Node'
-    }
     
-    while True:
-        choice = input("\n[INPUT] Select node type (1-4): ").strip()
-        if choice in node_types:
-            node_type = node_types[choice]
-            break
-        print("[ERROR] Invalid choice. Please select 1-4")
     
     # Network hub configuration
     print("\n[CONFIG] Network Hub Configuration:")
@@ -182,7 +165,6 @@ def get_user_input():
         'storage_capacity': storage,
         'cpu_cores': cpu_cores,
         'memory': memory,
-        'node_type': node_type,
         'hub_host': hub_host,
         'hub_port': hub_port
     }
