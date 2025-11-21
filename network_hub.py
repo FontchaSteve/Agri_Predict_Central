@@ -25,6 +25,7 @@ class NetworkHub:
         
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.settimeout(1.0)  # Add timeout to allow checking running flag
         
         try:
             self.server_socket.bind((self.host, self.port))
@@ -38,6 +39,7 @@ class NetworkHub:
             print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             print("=" * 60)
             print("\nWaiting for nodes to connect...\n")
+            sys.stdout.flush()  # Force output to display immediately
             
             # Start accepting connections
             accept_thread = threading.Thread(target=self.accept_connections)
@@ -50,6 +52,7 @@ class NetworkHub:
                 
         except Exception as e:
             print(f"[ERROR] Error starting network hub: {e}")
+            sys.stdout.flush()
             self.running = False
             
     def accept_connections(self):
@@ -57,6 +60,7 @@ class NetworkHub:
         while self.running:
             try:
                 client_socket, address = self.server_socket.accept()
+                client_socket.settimeout(5.0)  # Set timeout for client socket
                 
                 # Start a new thread to handle this node
                 handler_thread = threading.Thread(
@@ -66,9 +70,13 @@ class NetworkHub:
                 handler_thread.daemon = True
                 handler_thread.start()
                 
+            except socket.timeout:
+                # This is expected, continue loop to check running flag
+                continue
             except Exception as e:
                 if self.running:
                     print(f"[ERROR] Error accepting connection: {e}")
+                    sys.stdout.flush()
                     
     def handle_node(self, client_socket, address):
         """Handle communication with a connected node"""
@@ -92,8 +100,9 @@ class NetworkHub:
                     'connected_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
             
-            # Display connection information
+            # Display connection information immediately
             self.display_new_connection(node_info, address)
+            sys.stdout.flush()  # Force immediate display
             
             # Send acknowledgment
             response = {
@@ -105,6 +114,7 @@ class NetworkHub:
             # Keep connection alive and listen for messages
             while self.running:
                 try:
+                    client_socket.settimeout(1.0)
                     data = client_socket.recv(4096).decode('utf-8')
                     if not data:
                         break
@@ -112,7 +122,8 @@ class NetworkHub:
                     message = json.loads(data)
                     if message.get('type') == 'heartbeat':
                         # Respond to heartbeat
-                        client_socket.send(json.dumps({'status': 'alive'}).encode('utf-8'))
+                        response = json.dumps({'status': 'alive'}).encode('utf-8')
+                        client_socket.send(response)
                     elif message.get('type') == 'status_update':
                         # Update node status
                         with self.node_lock:
@@ -126,6 +137,7 @@ class NetworkHub:
                     
         except Exception as e:
             print(f"[ERROR] Error handling node: {e}")
+            sys.stdout.flush()
         finally:
             # Clean up when node disconnects
             if node_id:
@@ -135,6 +147,7 @@ class NetworkHub:
                 print(f"\n[DISCONNECT] Node Disconnected: {node_id}")
                 print(f"Active nodes: {len(self.connected_nodes)}")
                 print("-" * 60 + "\n")
+                sys.stdout.flush()
                 
             try:
                 client_socket.close()
@@ -143,7 +156,7 @@ class NetworkHub:
                 
     def display_new_connection(self, node_info, address):
         """Display information about newly connected node"""
-        print("=" * 60)
+        print("\n" + "=" * 60)
         print("[NEW CONNECTION] NODE CONNECTED")
         print("=" * 60)
         print(f"Node ID:        {node_info['node_id']}")
@@ -164,8 +177,12 @@ class NetworkHub:
         """Stop the network hub"""
         self.running = False
         if self.server_socket:
-            self.server_socket.close()
+            try:
+                self.server_socket.close()
+            except:
+                pass
         print("\n[SHUTDOWN] Network hub stopped")
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     hub = NetworkHub(host='localhost', port=5555)
@@ -174,3 +191,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\nShutting down network hub...")
         hub.stop()
+        
