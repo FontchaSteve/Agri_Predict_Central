@@ -533,7 +533,6 @@ class CleanNode:
             print("=" * 90)
             print("💡 Download options:")
             print("   • Use download_file_by_name('filename') to download by name")
-            print("   • Use download_file_by_index(index) to download by number")
             print("   • Use download_multiple_files(['file1', 'file2']) for multiple files")
 
             # Store file list for easy access
@@ -542,39 +541,35 @@ class CleanNode:
         except Exception as e:
             print(f"❌ Failed to list available files: {e}")
 
-    def download_file_by_index(self, index: int) -> bool:
-        """Download file by index from available files list"""
+    def find_file_by_name(self, file_name: str) -> Optional[Dict]:
+        """Find files by name with partial matching"""
         try:
-            if not hasattr(self, '_available_files') or not self._available_files:
-                print("❌ No available files. Run list_available_files() first.")
-                return False
+            message = {
+                'action': 'FIND_FILE_BY_NAME',
+                'node_id': self.node_id,
+                'file_name': file_name
+            }
 
-            if index < 1 or index > len(self._available_files):
-                print(f"❌ Invalid index. Choose between 1 and {len(self._available_files)}")
-                return False
+            response = self._send_message(message, timeout=10)
 
-            file_info = self._available_files[index - 1]
-            return self.download_file(file_info['file_id'])
+            if not response or response.get('status') != 'OK':
+                error = response.get('error', 'No response') if response else 'Connection failed'
+                print(f"❌ File search failed: {error}")
+                return None
+
+            matching_files = response.get('files', [])
+            return matching_files
 
         except Exception as e:
-            print(f"❌ Download by index failed: {e}")
-            return False
+            print(f"❌ File search error: {e}")
+            return None
 
     def download_file_by_name(self, file_name: str) -> bool:
         """Download file by name from available files list"""
         try:
-            if not hasattr(self, '_available_files') or not self._available_files:
-                print("❌ No available files. Run list_available_files() first.")
-                return False
-
-            # Find file by name (case-insensitive)
-            matching_files = []
-            for file_info in self._available_files:
-                if file_info['file_name'].lower() == file_name.lower():
-                    matching_files.append(file_info)
-                elif file_name.lower() in file_info['file_name'].lower():
-                    matching_files.append(file_info)
-
+            # First search for the file
+            matching_files = self.find_file_by_name(file_name)
+            
             if not matching_files:
                 print(f"❌ File '{file_name}' not found in network")
                 print("💡 Use list_available_files() to see available files")
@@ -615,10 +610,6 @@ class CleanNode:
     def download_multiple_files(self, file_names: List[str]) -> bool:
         """Download multiple files by name"""
         try:
-            if not hasattr(self, '_available_files') or not self._available_files:
-                print("❌ No available files. Run list_available_files() first.")
-                return False
-
             if not file_names:
                 print("❌ No file names provided")
                 return False
@@ -628,14 +619,11 @@ class CleanNode:
             not_found = []
 
             for file_name in file_names:
-                found = False
-                for file_info in self._available_files:
-                    if file_info['file_name'].lower() == file_name.lower():
-                        files_to_download.append(file_info)
-                        found = True
-                        break
-
-                if not found:
+                matching_files = self.find_file_by_name(file_name)
+                if matching_files:
+                    # Use the first match for each file name
+                    files_to_download.append(matching_files[0])
+                else:
                     not_found.append(file_name)
 
             if not_found:
@@ -743,15 +731,14 @@ class CleanNode:
                 print("1. 📝 Create file")
                 print("2. 📋 List local files")
                 print("3. 📂 List available network files")
-                print("4. 📥 Download file by index")
-                print("5. 📄 Download file by name")
-                print("6. 📦 Download multiple files")
-                print("7. 📊 Show node statistics")
-                print("8. 🌐 Show network status")
-                print("9. ❌ Exit interactive mode")
+                print("4. 🔍 Search and download file by name")
+                print("5. 📦 Download multiple files")
+                print("6. 📊 Show node statistics")
+                print("7. 🌐 Show network status")
+                print("8. ❌ Exit interactive mode")
                 print("-" * 70)
                 
-                choice = input(f"[{self.node_id}] Enter your choice (1-9): ").strip()
+                choice = input(f"[{self.node_id}] Enter your choice (1-8): ").strip()
 
                 if choice == '1':
                     self._interactive_create_file()
@@ -760,16 +747,14 @@ class CleanNode:
                 elif choice == '3':
                     self.list_available_files()
                 elif choice == '4':
-                    self._interactive_download_file_by_index()
-                elif choice == '5':
                     self._interactive_download_file_by_name()
-                elif choice == '6':
+                elif choice == '5':
                     self._interactive_download_multiple_files()
-                elif choice == '7':
+                elif choice == '6':
                     self._show_statistics()
-                elif choice == '8':
+                elif choice == '7':
                     self._show_network_status()
-                elif choice == '9':
+                elif choice == '8':
                     print("👋 Exiting interactive mode...")
                     break
                 else:
@@ -812,72 +797,21 @@ class CleanNode:
         except Exception as e:
             print(f"❌ File creation error: {e}")
 
-    def _interactive_download_file_by_index(self):
-        """Interactive file download by index"""
-        try:
-            if not hasattr(self, '_available_files') or not self._available_files:
-                print("❌ No available files. Please list network files first (option 3).")
-                return
-
-            print(f"\n📥 Download File by Index to {self.node_id}")
-            print("-" * 50)
-
-            index_input = input(f"Enter file index (1-{len(self._available_files)}): ").strip()
-            try:
-                index = int(index_input)
-                if index < 1 or index > len(self._available_files):
-                    print(f"❌ Invalid index. Choose between 1 and {len(self._available_files)}")
-                    return
-            except ValueError:
-                print("❌ Invalid index")
-                return
-
-            file_info = self._available_files[index - 1]
-            file_name = file_info['file_name']
-            file_size_mb = file_info['file_size'] / (1024 * 1024)
-
-            # Check if file already exists locally
-            for local_file in self.files.values():
-                if local_file['name'] == file_name:
-                    print(f"⚠️  File {file_name} already exists locally")
-                    overwrite = input("Overwrite? (y/n): ").strip().lower()
-                    if overwrite != 'y':
-                        return
-                    break
-
-            print(f"🚀 Starting download of {file_name} ({file_size_mb:.1f} MB)...")
-            success = self.download_file_by_index(index)
-
-            if success:
-                print(f"🎉 Download initiated successfully!")
-            else:
-                print(f"❌ Failed to initiate download")
-
-        except Exception as e:
-            print(f"❌ Download error: {e}")
-
     def _interactive_download_file_by_name(self):
         """Interactive file download by name"""
         try:
-            if not hasattr(self, '_available_files') or not self._available_files:
-                print("❌ No available files. Please list network files first (option 3).")
-                return
-
-            print(f"\n📄 Download File by Name to {self.node_id}")
+            print(f"\n🔍 Search and Download File to {self.node_id}")
             print("-" * 50)
             print("💡 You can enter:")
             print("   • Exact file name: 'document.pdf'")
             print("   • Partial name: 'doc' (will show matches)")
             print("   • Leave empty to see all available files")
 
-            file_name = input("Enter file name: ").strip()
+            file_name = input("Enter file name to search: ").strip()
 
             if not file_name:
                 # Show available files for reference
-                print("\n📂 Available files:")
-                for i, file_info in enumerate(self._available_files, 1):
-                    size_mb = file_info['file_size'] / (1024 * 1024)
-                    print(f"   {i:2}. {file_info['file_name']} ({size_mb:.1f} MB)")
+                self.list_available_files()
                 return
 
             print(f"🔍 Searching for '{file_name}'...")
@@ -894,10 +828,6 @@ class CleanNode:
     def _interactive_download_multiple_files(self):
         """Interactive multiple file download"""
         try:
-            if not hasattr(self, '_available_files') or not self._available_files:
-                print("❌ No available files. Please list network files first (option 3).")
-                return
-
             print(f"\n📦 Download Multiple Files to {self.node_id}")
             print("-" * 60)
             print("💡 Enter file names separated by commas:")
@@ -905,15 +835,8 @@ class CleanNode:
             print("   Or enter 'all' to download all available files")
 
             # Show available files for reference
-            print(f"\n📂 Available files ({len(self._available_files)} total):")
-            total_size = 0
-            for i, file_info in enumerate(self._available_files, 1):
-                size_mb = file_info['file_size'] / (1024 * 1024)
-                total_size += file_info['file_size']
-                print(f"   {i:2}. {file_info['file_name']:<30} ({size_mb:>6.1f} MB)")
-
-            print(f"\nTotal size of all files: {total_size/(1024*1024):.1f} MB")
-            print("-" * 60)
+            print(f"\n📂 Available files:")
+            self.list_available_files()
 
             user_input = input("Enter file names (or 'all'): ").strip()
 
@@ -922,8 +845,12 @@ class CleanNode:
                 return
 
             if user_input.lower() == 'all':
-                file_names = [f['file_name'] for f in self._available_files]
-                print(f"📦 Selected all {len(file_names)} files for download")
+                if hasattr(self, '_available_files') and self._available_files:
+                    file_names = [f['file_name'] for f in self._available_files]
+                    print(f"📦 Selected all {len(file_names)} files for download")
+                else:
+                    print("❌ No available files. Please list network files first.")
+                    return
             else:
                 # Parse comma-separated file names
                 file_names = [name.strip() for name in user_input.split(',') if name.strip()]
@@ -1020,6 +947,7 @@ def main():
     print("✅ Automatic storage validation")
     print("✅ Real-time transfer statistics")
     print("✅ Fault-tolerant file replication")
+    print("✅ File search by name")
     print("=" * 70)
     print(f"🖥️  Resources: {args.cpu} CPU, {args.memory}GB RAM, {args.storage}GB Storage, {args.bandwidth}Mbps")
     print("=" * 70)
