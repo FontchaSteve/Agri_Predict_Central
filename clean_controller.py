@@ -188,6 +188,8 @@ class CleanController:
                 return self._handle_upload_request(message)
             elif action == 'TRANSFER_COMPLETE':
                 return self._handle_transfer_complete(message)
+            elif action == 'FIND_FILE_BY_NAME':
+                return self._handle_find_file_by_name(message)
             else:
                 return {'status': 'ERROR', 'error': f'Unknown action: {action}'}
     
@@ -307,6 +309,43 @@ class CleanController:
 
         except Exception as e:
             return {'status': 'ERROR', 'error': f'List files failed: {e}'}
+
+    def _handle_find_file_by_name(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Find files by name with partial matching"""
+        try:
+            file_name = message.get('file_name', '').lower()
+            if not file_name:
+                return {'status': 'ERROR', 'error': 'File name is required'}
+
+            matching_files = []
+            for file_info in self.files.values():
+                # Check if file is available and matches search
+                online_replicas = [node for node in file_info.replica_nodes
+                                 if node in self.nodes and self.nodes[node].status == 'active']
+
+                if online_replicas and file_info.is_uploaded:
+                    # Exact match or partial match
+                    if (file_info.file_name.lower() == file_name or 
+                        file_name in file_info.file_name.lower()):
+                        file_data = {
+                            'file_id': file_info.file_id,
+                            'file_name': file_info.file_name,
+                            'file_size': file_info.file_size,
+                            'owner_node': file_info.owner_node,
+                            'replica_count': len(online_replicas),
+                            'total_chunks': file_info.total_chunks,
+                            'chunk_size': file_info.chunk_size,
+                            'created_at': file_info.created_at
+                        }
+                        matching_files.append(file_data)
+
+            if not matching_files:
+                return {'status': 'ERROR', 'error': f'No files found matching: {file_name}'}
+
+            return {'status': 'OK', 'files': matching_files}
+
+        except Exception as e:
+            return {'status': 'ERROR', 'error': f'File search failed: {e}'}
 
     def _handle_download_request(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle file download request - coordinate transfer between nodes"""
@@ -807,6 +846,7 @@ def main():
     print("✅ Bandwidth-aware file transfers")
     print("✅ Real-time network monitoring")
     print("✅ Chunked file transfer coordination")
+    print("✅ File search by name")
     print("=" * 60)
     
     controller = CleanController()
