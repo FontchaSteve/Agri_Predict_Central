@@ -65,18 +65,9 @@ A comprehensive, production-ready distributed cloud storage system that implemen
 - **Progress tracking** with accurate ETA calculations
 
 ---
-
-## 🚀 **QUICK START**
-
-### **Option 1: Complete Guided Demo (Recommended)**
-
-```bash
-python complete_usage_demo.py
-```
-
 **Features:** Step-by-step walkthrough of ALL features with multiple interactive terminals
 
-### **Option 2: Manual Setup**
+### **Option 1: Manual Setup**
 
 ```bash
 # Terminal 1: Start Controller
