@@ -80,23 +80,8 @@ python clean_node.py --node-id nodeA --cpu 4 --memory 16 --storage 1000 --bandwi
 python clean_node.py --node-id nodeB --cpu 2 --memory 8 --storage 500 --bandwidth 500 --interactive
 ```
 
-### **Option 3: Testing Specific Features**
-
-```bash
-# Test enhanced downloads
-python enhanced_download_demo.py
-
-# Test performance
-python performance_benchmark.py
-
-# Test fault tolerance
-python fault_tolerance_test.py
-
 # Test recent fixes
 python test_fixes.py
-```
-
----
 
 ## 🎮 **INTERACTIVE MENU REFERENCE**
 
