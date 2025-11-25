@@ -1,24 +1,103 @@
 import sys
 import grpc
-#from concurrent import futures
+import getpass
 import cloudsecurity_pb2
 import cloudsecurity_pb2_grpc
+import subprocess
+import os
 
+def get_login_credentials():
+    """Get login credentials from user input"""
+    print("🔐 Login System")
+    print("=" * 20)
+    
+    username = input("Username: ").strip()
+    password = getpass.getpass("Password: ")
+    
+    return username, password
 
-def run(request, login, password):
-    with grpc.insecure_channel('localhost:51234') as channel:
+def run_login(login, password):
+    """Execute the login request with timeout"""
+    try:
+        # Add timeout to the channel
+        channel = grpc.insecure_channel('localhost:51234')
         stub = cloudsecurity_pb2_grpc.UserServiceStub(channel)
-        if (request == "login"):
-            response = stub.login(cloudsecurity_pb2.Request(login=login, password=password))
+        
+        print(f"⏳ Attempting login for user: {login}...")
+        response = stub.login(cloudsecurity_pb2.Request(login=login, password=password), timeout=10)
+        return response
+        
+    except grpc.RpcError as e:
+        if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+            return cloudsecurity_pb2.Response(result="❌ Login timeout: Server took too long to respond")
         else:
-            print("Invalid request")
-            exit()
-    print(f"Result: {response.result}")
+            return cloudsecurity_pb2.Response(result=f"❌ Connection error: {e.details()}")
+    except Exception as e:
+        return cloudsecurity_pb2.Response(result=f"❌ Error: {e}")
 
+def run_registration():
+    """Run the user registration directly"""
+    try:
+        print("\n🚀 Launching Registration System...")
+        print("=" * 40)
+        
+        # Get the current script directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        register_script = os.path.join(current_dir, "register_user.py")
+        
+        # Run the registration script
+        result = subprocess.run([sys.executable, register_script], 
+                              capture_output=False,  # Show output directly
+                              text=True)
+        
+        if result.returncode == 0:
+            print("\n✅ Registration process completed")
+        else:
+            print(f"\n❌ Registration process failed with code: {result.returncode}")
+            
+    except Exception as e:
+        print(f"❌ Error launching registration: {e}")
+
+def main():
+    # If no arguments provided, use interactive mode
+    if len(sys.argv) == 1:
+        print("Welcome to Cloud Security System!")
+        print("Choose an option:")
+        print("1. Login")
+        print("2. Register new user")
+        
+        choice = input("Enter choice (1 or 2): ").strip()
+        
+        if choice == "1":
+            # Interactive login
+            username, password = get_login_credentials()
+            response = run_login(username, password)
+            print(f"🔑 Result: {response.result}")
+            
+        elif choice == "2":
+            # DIRECTLY RUN REGISTRATION - FIXED!
+            run_registration()
+            
+        else:
+            print("❌ Invalid choice. Please run again.")
+    
+    # Command line mode for login
+    elif len(sys.argv) == 4:
+        request = sys.argv[1]
+        login = sys.argv[2]
+        password = sys.argv[3]
+        
+        if request == "login":
+            response = run_login(login, password)
+            print(f"Result: {response.result}")
+        else:
+            print("Invalid request. Use 'login'")
+            
+    else:
+        print("Usage:")
+        print("  Interactive mode: python client.py")
+        print("  Command line: python client.py login <username> <password>")
+        print("  Register: python register_user.py")
 
 if __name__ == '__main__':
-    # Get user Input 
-    request = sys.argv[1]
-    login = sys.argv[2]
-    password = sys.argv[3]
-    run(request, login, password)
+    main()
