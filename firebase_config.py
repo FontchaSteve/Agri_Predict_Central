@@ -5,35 +5,41 @@ import datetime
 
 def initialize_firebase():
     try:
-        # Check if Firebase is already initialized
+        # Check if already initialized
         if firebase_admin._DEFAULT_APP_NAME in firebase_admin._apps:
+            app = firebase_admin.get_app()
             print("✅ Firebase already initialized")
-            return firestore.client()
+            return firestore.client(app=app)
         
-        # Check if service account file exists
+        # Check service account file
         service_account_path = 'firebase-service-account-key.json'
         if not os.path.exists(service_account_path):
             print(f"❌ Service account file not found: {service_account_path}")
-            print("💡 Please download it from Firebase Console:")
-            print("   https://console.firebase.google.com/project/cloudgrpc-b1d3f/settings/serviceaccounts/adminsdk")
             return None
         
-        print("🔌 Initializing Firebase...")
+        print(f"🔌 Initializing Firebase with: {service_account_path}")
         
-        # Initialize with the service account
+        # Initialize Firebase
         cred = credentials.Certificate(service_account_path)
-        firebase_admin.initialize_app(cred)
+        app = firebase_admin.initialize_app(cred)
         
-        print("✅ Firebase initialized successfully")
-        print(f"🕒 Current system time: {datetime.datetime.now()}")
+        # Test the connection
+        db = firestore.client(app=app)
         
-        return firestore.client()
+        # Try a simple operation to verify connection
+        test_ref = db.collection('test_connection')
+        test_ref.limit(1).get()
+        
+        print("✅ Firebase initialized and connected successfully!")
+        print(f"🕒 Connection time: {datetime.datetime.now()}")
+        
+        return db
         
     except Exception as e:
-        print(f"❌ Error initializing Firebase: {e}")
-        print("💡 Possible solutions:")
-        print("   1. Download a new service account key from Firebase Console")
-        print("   2. Check your system clock is synchronized")
+        print(f"❌ Firebase initialization failed: {e}")
+        print("💡 Solutions:")
+        print("   1. Download a NEW service account key from Firebase Console")
+        print("   2. Check if your project exists and Firestore is enabled")
         print("   3. Check your internet connection")
         return None
 
