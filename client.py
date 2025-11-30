@@ -16,14 +16,21 @@ def get_login_credentials():
     
     return username, password
 
+def get_otp_code():
+    """Get OTP code from user"""
+    print("\n" + "=" * 30)
+    print("🔢 OTP VERIFICATION")
+    print("=" * 30)
+    otp_code = input("Enter the 6-digit OTP code sent to your email: ").strip()
+    return otp_code
+
 def run_login(login, password):
-    """Execute the login request with timeout"""
+    """Execute the login request"""
     try:
-        # Add timeout to the channel
         channel = grpc.insecure_channel('localhost:51234')
         stub = cloudsecurity_pb2_grpc.UserServiceStub(channel)
         
-        print(f"⏳ Attempting login for user: {login}...")
+        print(f"⏳ Verifying credentials...")
         response = stub.login(cloudsecurity_pb2.Request(login=login, password=password), timeout=10)
         return response
         
@@ -35,19 +42,30 @@ def run_login(login, password):
     except Exception as e:
         return cloudsecurity_pb2.Response(result=f"❌ Error: {e}")
 
+def run_otp_verification(username, otp_code):
+    """Verify OTP code"""
+    try:
+        channel = grpc.insecure_channel('localhost:51234')
+        stub = cloudsecurity_pb2_grpc.UserServiceStub(channel)
+        
+        print(f"⏳ Verifying OTP code...")
+        response = stub.verifyOTP(cloudsecurity_pb2.OTPRequest(username=username, otp_code=otp_code), timeout=10)
+        return response
+        
+    except Exception as e:
+        return cloudsecurity_pb2.Response(result=f"❌ OTP verification error: {e}")
+
 def run_registration():
     """Run the user registration directly"""
     try:
         print("\n🚀 Launching Registration System...")
         print("=" * 40)
         
-        # Get the current script directory
         current_dir = os.path.dirname(os.path.abspath(__file__))
         register_script = os.path.join(current_dir, "register_user.py")
         
-        # Run the registration script
         result = subprocess.run([sys.executable, register_script], 
-                              capture_output=False,  # Show output directly
+                              capture_output=False,
                               text=True)
         
         if result.returncode == 0:
@@ -69,13 +87,21 @@ def main():
         choice = input("Enter choice (1 or 2): ").strip()
         
         if choice == "1":
-            # Interactive login
+            # Interactive login with OTP
             username, password = get_login_credentials()
-            response = run_login(username, password)
-            print(f"🔑 Result: {response.result}")
+            
+            # Step 1: Initial login
+            login_response = run_login(username, password)
+            print(f"🔑 {login_response.result}")
+            
+            # Step 2: If OTP is required, verify it
+            if "OTP" in login_response.result and "enter" in login_response.result.lower():
+                otp_code = get_otp_code()
+                otp_response = run_otp_verification(username, otp_code)
+                print(f"✅ {otp_response.result}")
             
         elif choice == "2":
-            # DIRECTLY RUN REGISTRATION - FIXED!
+            # Run registration
             run_registration()
             
         else:
