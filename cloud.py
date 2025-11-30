@@ -4,23 +4,29 @@ from concurrent import futures
 import cloudsecurity_pb2
 import cloudsecurity_pb2_grpc
 from firebase_config import db
+from utils import send_otp, generate_otp
 import datetime
+
+# Store OTP codes temporarily
+otp_storage = {}
 
 class UserServiceSkeleton(cloudsecurity_pb2_grpc.UserServiceServicer):
     def login(self, request, context) -> cloudsecurity_pb2.Response:
-        print(f'🚨 NEW LOGIN REQUEST RECEIVED!')
-        print(f'   👤 Username: {request.login}')
-        print(f'   🔐 Password: {request.password}')
-        print(f'   🕒 Time: {datetime.datetime.now()}')
-        print(f'   📍 Client: {context.peer()}')
-        
+        print(f'🔐 Login attempt for user: {request.login}')
         result = self.checkId(request.login, request.password)
-        print(f'📤 SENDING RESPONSE: {result}')
-        print('=' * 50)
+        return cloudsecurity_pb2.Response(result=result)
+
+    def verifyOTP(self, request, context) -> cloudsecurity_pb2.Response:
+        print(f'🔢 OTP verification for user: {request.username}')
+        result = self.verify_otp_code(request.username, request.otp_code)
         return cloudsecurity_pb2.Response(result=result)
 
     def checkId(self, login, pwd) -> str:
         try:
+            # Check Firebase connection first
+            if db is None:
+                return "❌ Login failed: Database connection error. Please try again later."
+            
             print(f"🔍 Querying Firebase for user: {login}")
             
             # Query Firebase for user
@@ -43,7 +49,19 @@ class UserServiceSkeleton(cloudsecurity_pb2_grpc.UserServiceServicer):
             
             # Verify password
             if bcrypt.checkpw(pwd.encode('utf-8'), stored_password.encode('utf-8')):
-                return f"✅ Login successful! Welcome {login}"
+                # Generate and send OTP
+                otp_code = generate_otp()
+                otp_storage[login] = {
+                    'code': otp_code,
+                    'email': user_email,
+                    'timestamp': datetime.datetime.now(),
+                    'attempts': 0
+                }
+                
+                print(f"📨 Sending OTP {otp_code} to {user_email}...")
+                otp_result = send_otp(user_email, otp_code)
+                
+                return f"✅ Password correct! {otp_result} Please check your email and enter the OTP code."
             else:
                 return "❌ Login failed: Invalid password"
                 
@@ -52,9 +70,44 @@ class UserServiceSkeleton(cloudsecurity_pb2_grpc.UserServiceServicer):
             print(error_msg)
             return error_msg
 
+    def verify_otp_code(self, username, otp_code) -> str:
+        try:
+            # Check if OTP exists for user
+            if username not in otp_storage:
+                return "❌ OTP verification failed: No OTP request found for this user. Please login again."
+            
+            otp_data = otp_storage[username]
+            
+            # Check if OTP is expired (5 minutes)
+            time_diff = datetime.datetime.now() - otp_data['timestamp']
+            if time_diff.total_seconds() > 300:  # 5 minutes
+                del otp_storage[username]
+                return "❌ OTP verification failed: OTP code has expired. Please login again."
+            
+            # Check attempts
+            if otp_data['attempts'] >= 3:
+                del otp_storage[username]
+                return "❌ OTP verification failed: Too many attempts. Please login again."
+            
+            # Verify OTP code
+            if otp_data['code'] == otp_code:
+                # OTP is correct - login successful
+                del otp_storage[username]
+                return f"🎉 Login successful! Welcome {username}"
+            else:
+                # Wrong OTP code
+                otp_storage[username]['attempts'] += 1
+                remaining_attempts = 3 - otp_storage[username]['attempts']
+                return f"❌ Invalid OTP code. {remaining_attempts} attempts remaining."
+                
+        except Exception as e:
+            return f"❌ OTP verification error: {e}"
+
 def run():
-    print('🔥 STARTING FRESH SERVER INSTANCE')
-    print(f'🕒 Server start time: {datetime.datetime.now()}')
+    # Check Firebase connection before starting server
+    if db is None:
+        print("❌ Cannot start server: Firebase connection failed")
+        return
     
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
     cloudsecurity_pb2_grpc.add_UserServiceServicer_to_server(UserServiceSkeleton(), server)
@@ -62,7 +115,6 @@ def run():
     print('✅ Starting Server on port 51234...')
     server.start()
     print('✅ Server started successfully! Waiting for connections...')
-    print('💡 Test with: python client.py')
     server.wait_for_termination()
 
 if __name__ == '__main__':
