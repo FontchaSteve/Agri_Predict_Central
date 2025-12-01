@@ -1,0 +1,6 @@
+Flask==3.0.0
+Flask-SocketIO==5.3.4
+eventlet==0.33.3
+psutil==5.9.5
+humanize==4.7.0
+python-socketio==5.9.0
