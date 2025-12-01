@@ -1,0 +1,336 @@
+<div class="dashboard">
+    <div class="dashboard-header">
+        <h2><i class="fas fa-tachometer-alt"></i> Dashboard</h2>
+        <div class="user-welcome">
+            <i class="fas fa-user-circle"></i>
+            <span>{{ username }}</span>
+        </div>
+    </div>
+
+    <div class="stats-cards">
+        <div class="stat-card">
+            <div class="stat-icon storage">
+                <i class="fas fa-database"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Total Storage</h3>
+                <p id="total-storage">Loading...</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon used">
+                <i class="fas fa-hdd"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Used Storage</h3>
+                <p id="used-storage">Loading...</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon available">
+                <i class="fas fa-cloud-download-alt"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Available</h3>
+                <p id="available-storage">Loading...</p>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon files">
+                <i class="fas fa-file"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Files</h3>
+                <p id="file-count">Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="dashboard-content">
+        <div class="upload-section">
+            <h3><i class="fas fa-upload"></i> Upload File</h3>
+            <div class="upload-area" id="uploadArea">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p>Drag & drop files here or click to browse</p>
+                <input type="file" id="fileInput" multiple style="display: none;">
+                <button class="btn-browse" onclick="document.getElementById('fileInput').click()">
+                    Browse Files
+                </button>
+            </div>
+            <div class="upload-progress" id="uploadProgress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <span id="progressText">0%</span>
+            </div>
+        </div>
+
+        <div class="files-section">
+            <h3><i class="fas fa-folder-open"></i> Your Files</h3>
+            <div class="files-list" id="filesList">
+                <div class="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Loading files...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="system-info">
+        <h3><i class="fas fa-server"></i> System Information</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="info-label">Active Nodes:</span>
+                <span class="info-value" id="active-nodes">--</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Replication Factor:</span>
+                <span class="info-value">{{ stats.get('replication_factor', 3) }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Last Sync:</span>
+                <span class="info-value" id="last-sync">--</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">System Status:</span>
+                <span class="info-value status-ok" id="system-status">Healthy</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    loadStorageInfo();
+    loadFiles();
+    startRealTimeUpdates();
+});
+
+async function loadStorageInfo() {
+    try {
+        const response = await fetch('/api/storage');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            document.getElementById('total-storage').textContent = data.total;
+            document.getElementById('used-storage').textContent = data.used;
+            document.getElementById('available-storage').textContent = data.available;
+            document.getElementById('file-count').textContent = data.file_count;
+            document.getElementById('active-nodes').textContent = data.node_count;
+            
+            // Update storage bar
+            const usedPercent = data.used_percent;
+            document.getElementById('system-status').textContent = 
+                usedPercent > 90 ? 'Warning' : usedPercent > 75 ? 'Good' : 'Healthy';
+        }
+    } catch (error) {
+        console.error('Error loading storage info:', error);
+    }
+}
+
+async function loadFiles() {
+    try {
+        const response = await fetch('/api/files');
+        const data = await response.json();
+        
+        const filesList = document.getElementById('filesList');
+        if (data.status === 'success' && data.files && data.files.length > 0) {
+            filesList.innerHTML = '';
+            
+            data.files.forEach(file => {
+                const fileElement = document.createElement('div');
+                fileElement.className = 'file-item';
+                fileElement.innerHTML = `
+                    <div class="file-icon">
+                        <i class="fas fa-file"></i>
+                    </div>
+                    <div class="file-info">
+                        <div class="file-name">${file.original_filename}</div>
+                        <div class="file-meta">
+                            <span>${file.size_human}</span>
+                            <span>${file.upload_date}</span>
+                            <span>Replicas: ${file.replica_count}</span>
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        <button class="btn-download" onclick="downloadFile('${file.file_id}')">
+                            <i class="fas fa-download"></i>
+                        </button>
+                        <button class="btn-delete" onclick="deleteFile('${file.file_id}')">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                filesList.appendChild(fileElement);
+            });
+        } else {
+            filesList.innerHTML = '<div class="empty-state">No files uploaded yet</div>';
+        }
+    } catch (error) {
+        console.error('Error loading files:', error);
+    }
+}
+
+function startRealTimeUpdates() {
+    const socket = io();
+    
+    socket.on('connect', function() {
+        console.log('Connected to real-time updates');
+    });
+    
+    socket.on('file_uploaded', function(data) {
+        showNotification(`File "${data.filename}" uploaded successfully`);
+        loadFiles();
+        loadStorageInfo();
+    });
+    
+    socket.on('file_deleted', function(data) {
+        showNotification(`File deleted successfully`);
+        loadFiles();
+        loadStorageInfo();
+    });
+    
+    socket.on('system_update', function(data) {
+        updateSystemInfo(data);
+    });
+}
+
+// File upload handling
+document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+const uploadArea = document.getElementById('uploadArea');
+
+uploadArea.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    uploadArea.classList.add('drag-over');
+});
+
+uploadArea.addEventListener('dragleave', function() {
+    uploadArea.classList.remove('drag-over');
+});
+
+uploadArea.addEventListener('drop', function(e) {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+    handleFiles(e.dataTransfer.files);
+});
+
+async function handleFileSelect(e) {
+    handleFiles(e.target.files);
+}
+
+async function handleFiles(files) {
+    for (let file of files) {
+        await uploadFile(file);
+    }
+}
+
+async function uploadFile(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const progress = document.getElementById('uploadProgress');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    
+    progress.style.display = 'block';
+    
+    try {
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            progressFill.style.width = '100%';
+            progressText.textContent = '100%';
+            showNotification(`File "${file.name}" uploaded successfully!`);
+            
+            // Reset after 2 seconds
+            setTimeout(() => {
+                progress.style.display = 'none';
+                progressFill.style.width = '0%';
+                progressText.textContent = '0%';
+            }, 2000);
+        } else {
+            throw new Error(result.message);
+        }
+    } catch (error) {
+        showNotification(`Upload failed: ${error.message}`, 'error');
+        progress.style.display = 'none';
+    }
+}
+
+async function downloadFile(fileId) {
+    try {
+        const response = await fetch(`/api/download/${fileId}`);
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Create download link
+            const link = document.createElement('a');
+            link.href = data.download_url;
+            link.download = data.file_info.original_filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showNotification('Download started');
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (error) {
+        showNotification(`Download failed: ${error.message}`, 'error');
+    }
+}
+
+async function deleteFile(fileId) {
+    if (!confirm('Are you sure you want to delete this file?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/delete/${fileId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            showNotification('File deleted successfully');
+        } else {
+            throw new Error(data.message);
+        }
+    } catch (error) {
+        showNotification(`Delete failed: ${error.message}`, 'error');
+    }
+}
+
+function showNotification(message, type = 'success') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+        <span>${message}</span>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.classList.add('fade-out');
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+function updateSystemInfo(data) {
+    if (data.status === 'success') {
+        document.getElementById('last-sync').textContent = 
+            new Date().toLocaleTimeString();
+    }
+}
+</script>
