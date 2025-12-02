@@ -1,0 +1,67 @@
+[
+  {
+    "id": "N1",
+    "name": "Node 1",
+    "status": "active",
+    "storage_used_mb": 0,
+    "storage_total_mb": 500,
+    "cpu_cores": 4,
+    "memory_gb": 10,
+    "bandwidth_mbps": 800,
+    "transfers": 0,
+    "files": 0,
+    "created": "2025-12-02T19:15:29.517459"
+  },
+  {
+    "id": "N2",
+    "name": "Node 2",
+    "status": "active",
+    "storage_used_mb": 0.000790290832519247,
+    "storage_total_mb": 500,
+    "cpu_cores": 8,
+    "memory_gb": 4,
+    "bandwidth_mbps": 800,
+    "transfers": 0,
+    "files": 0,
+    "created": "2025-12-02T19:15:29.517459"
+  },
+  {
+    "id": "N3",
+    "name": "Node 3",
+    "status": "active",
+    "storage_used_mb": 0.000790290832519247,
+    "storage_total_mb": 500,
+    "cpu_cores": 3,
+    "memory_gb": 5,
+    "bandwidth_mbps": 800,
+    "transfers": 0,
+    "files": 0,
+    "created": "2025-12-02T19:15:29.517459"
+  },
+  {
+    "id": "N4",
+    "name": "Node 4",
+    "status": "active",
+    "storage_used_mb": 0.0008837127685545898,
+    "storage_total_mb": 500,
+    "cpu_cores": 3,
+    "memory_gb": 5,
+    "bandwidth_mbps": 1200,
+    "transfers": 0,
+    "files": 0,
+    "created": "2025-12-02T19:15:29.517459"
+  },
+  {
+    "id": "N5",
+    "name": "Node 5",
+    "status": "active",
+    "storage_used_mb": 0.0008837127685545898,
+    "storage_total_mb": 500,
+    "cpu_cores": 6,
+    "memory_gb": 11,
+    "bandwidth_mbps": 800,
+    "transfers": 0,
+    "files": 0,
+    "created": "2025-12-02T19:15:29.517459"
+  }
+]
