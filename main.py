@@ -1,308 +1,500 @@
 """
-AgriPredict Cloud Storage - Fixed Version
+AgriPredict Cloud Storage - Admin + User Dashboard
 """
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
 import os
 import json
 import hashlib
+import shutil
 from datetime import datetime
 from werkzeug.utils import secure_filename
-import traceback
+import random
 
-# Get the absolute path to the templates folder
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
-
-app = Flask(__name__, template_folder=TEMPLATES_DIR)
-app.secret_key = 'agripredict-cloud-2024'
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max file
+app = Flask(__name__, template_folder='templates')
+app.secret_key = 'agripredict-2024-secret'
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 
 # Storage settings
-TOTAL_STORAGE_MB = 2500  # 2.5GB total (5 nodes × 500MB)
-NODES = 5  # Hidden from user
+TOTAL_STORAGE_GB = 2.5  # 2.5GB total
+NODES = 5
 STORAGE_PER_NODE_MB = 500
-BLOCK_SIZE = 1024 * 1024  # 1MB blocks
-
-print(f"📁 Base directory: {BASE_DIR}")
-print(f"📁 Templates directory: {TEMPLATES_DIR}")
-
-# Check if templates folder exists
-if not os.path.exists(TEMPLATES_DIR):
-    print(f"❌ ERROR: Templates folder not found at {TEMPLATES_DIR}")
-    print("Creating templates folder...")
-    os.makedirs(TEMPLATES_DIR, exist_ok=True)
+REPLICATION_FACTOR = 2  # Each file stored on 2 nodes
 
 # Create directories
 os.makedirs('temp', exist_ok=True)
-os.makedirs('file_info', exist_ok=True)
+os.makedirs('metadata', exist_ok=True)
+os.makedirs('templates', exist_ok=True)
 
-class CloudStorage:
+class NodeManager:
     def __init__(self):
-        self.storage_path = os.path.join(os.path.expanduser("~"), "AgriPredict_Cloud")
-        self.node_paths = []
+        self.nodes_file = 'nodes.json'
+        self.nodes = self.load_nodes()
+    
+    def load_nodes(self):
+        """Load nodes from file or create default"""
+        if os.path.exists(self.nodes_file):
+            with open(self.nodes_file, 'r') as f:
+                return json.load(f)
         
-        # Create storage
-        if not os.path.exists(self.storage_path):
-            os.makedirs(self.storage_path)
-            print(f"🌐 Cloud Storage created at: {self.storage_path}")
-        
-        # Create 5 hidden nodes
+        # Create default nodes
+        nodes = []
         for i in range(1, NODES + 1):
-            node_path = os.path.join(self.storage_path, f"node{i}")
+            nodes.append({
+                'id': f'N{i}',
+                'name': f'Node {i}',
+                'status': 'active',
+                'storage_used_mb': 0,
+                'storage_total_mb': STORAGE_PER_NODE_MB,
+                'cpu_cores': random.randint(2, 8),
+                'memory_gb': random.randint(4, 16),
+                'bandwidth_mbps': random.choice([800, 1000, 1200, 1400]),
+                'transfers': 0,
+                'files': 0,
+                'created': datetime.now().isoformat()
+            })
+        
+        self.save_nodes(nodes)
+        return nodes
+    
+    def save_nodes(self, nodes):
+        """Save nodes to file"""
+        with open(self.nodes_file, 'w') as f:
+            json.dump(nodes, f, indent=2)
+    
+    def get_active_nodes(self):
+        """Get active nodes for file storage"""
+        return [node for node in self.nodes if node['status'] == 'active']
+    
+    def start_node(self, node_id):
+        """Start a node"""
+        for node in self.nodes:
+            if node['id'] == node_id:
+                node['status'] = 'active'
+                self.save_nodes(self.nodes)
+                return True
+        return False
+    
+    def stop_node(self, node_id):
+        """Stop a node"""
+        for node in self.nodes:
+            if node['id'] == node_id:
+                node['status'] = 'stopped'
+                self.save_nodes(self.nodes)
+                return True
+        return False
+    
+    def delete_node(self, node_id):
+        """Delete a node (mark as deleted)"""
+        # NOTE: This does not clean up the physical storage folder on disk.
+        self.nodes = [node for node in self.nodes if node['id'] != node_id]
+        self.save_nodes(self.nodes)
+        return True
+    
+    def add_node(self, node_data):
+        """Add a new node"""
+        new_node = {
+            'id': f'N{len(self.nodes) + 1}',
+            'name': node_data.get('name', f'Node {len(self.nodes) + 1}'),
+            'status': 'active',
+            'storage_used_mb': 0,
+            'storage_total_mb': node_data.get('storage_total_mb', STORAGE_PER_NODE_MB), # Use provided storage if available
+            'cpu_cores': node_data.get('cpu_cores', 4),
+            'memory_gb': node_data.get('memory_gb', 8),
+            'bandwidth_mbps': node_data.get('bandwidth_mbps', 1000),
+            'transfers': 0,
+            'files': 0,
+            'created': datetime.now().isoformat()
+        }
+        self.nodes.append(new_node)
+        self.save_nodes(self.nodes)
+        return new_node
+    
+    def get_node_stats(self):
+        """Get overall node statistics"""
+        active = len([n for n in self.nodes if n['status'] == 'active'])
+        total = len(self.nodes)
+        
+        # Calculate storage usage
+        total_storage_mb = sum(n['storage_total_mb'] for n in self.nodes)
+        used_storage_mb = sum(n['storage_used_mb'] for n in self.nodes)
+        
+        return {
+            'active_nodes': active,
+            'total_nodes': total,
+            'storage_used_gb': round(used_storage_mb / 1024, 2),
+            'storage_total_gb': round(total_storage_mb / 1024, 2),
+            'storage_percent': round((used_storage_mb / total_storage_mb) * 100, 1) if total_storage_mb > 0 else 0,
+            'total_files': sum(n['files'] for n in self.nodes),
+            'total_transfers': sum(n['transfers'] for n in self.nodes)
+        }
+
+class DistributedStorage:
+    def __init__(self, node_manager):
+        self.node_manager = node_manager
+        self.base_path = os.path.join(os.path.expanduser("~"), "AgriPredict_Cloud")
+        
+        # Ensure the base path exists
+        os.makedirs(self.base_path, exist_ok=True)
+        
+        # 🌟 FIX: Ensure all node-specific directories exist 🌟
+        # This will run every time the app starts and is robust 
+        # against running the app multiple times or adding new nodes.
+        for node in node_manager.nodes:
+            node_path = os.path.join(self.base_path, node['id'])
             os.makedirs(node_path, exist_ok=True)
-            self.node_paths.append(node_path)
-        
-        print(f"✅ {NODES} storage nodes ready (500MB each)")
     
-    def save_file(self, file_path, filename):
-        """Split file and save across nodes"""
-        file_id = hashlib.md5(f"{filename}{datetime.now()}".encode()).hexdigest()[:12]
-        file_size = os.path.getsize(file_path)
-        
-        # Check storage space
-        storage_info = self.get_storage_info()
-        if storage_info['available_mb'] < (file_size / (1024*1024)):
-            return {'error': 'Not enough storage space'}
-        
-        # Split file into blocks
-        blocks = []
-        block_num = 0
-        
-        with open(file_path, 'rb') as f:
-            while True:
-                data = f.read(BLOCK_SIZE)
-                if not data:
+    def upload_file(self, file_stream, filename):
+        """Upload file with replication across nodes"""
+        try:
+            active_nodes = self.node_manager.get_active_nodes()
+            if len(active_nodes) < REPLICATION_FACTOR:
+                return {'error': f'Need at least {REPLICATION_FACTOR} active nodes for replication'}
+            
+            # Save file temporarily
+            # IMPORTANT: The file_stream passed to upload_file is a FileStorage object.
+            # Calling .save() on it saves the uploaded file to the specified path.
+            temp_path = os.path.join('temp', f"temp_{datetime.now().strftime('%Y%m%d%H%M%S')}_{secure_filename(filename)}")
+            file_stream.save(temp_path)
+            
+            file_id = hashlib.md5(f"{filename}{datetime.now()}".encode()).hexdigest()[:12]
+            file_size = os.path.getsize(temp_path)
+            file_size_mb = file_size / (1024 * 1024)
+            
+            # Check if enough storage space available
+            node_stats = self.node_manager.get_node_stats()
+            # We need enough available space for REPLICATION_FACTOR copies
+            required_space_gb = (file_size_mb / 1024) * REPLICATION_FACTOR
+            available_gb = node_stats['storage_total_gb'] - node_stats['storage_used_gb']
+            
+            if available_gb < required_space_gb:
+                os.remove(temp_path)
+                return {'error': f'Not enough total storage space (Required: {round(required_space_gb, 2)}GB)'}
+            
+            # Select nodes for replication (choose random active nodes)
+            selected_nodes = random.sample(active_nodes, min(REPLICATION_FACTOR, len(active_nodes)))
+            
+            # Final check per node availability (storage_total_mb - storage_used_mb)
+            can_store = True
+            for node in selected_nodes:
+                if node['storage_total_mb'] - node['storage_used_mb'] < file_size_mb:
+                    can_store = False
                     break
+
+            if not can_store:
+                os.remove(temp_path)
+                return {'error': 'Not enough space on selected replication nodes.'}
+            
+            # Create metadata
+            metadata = {
+                'file_id': file_id,
+                'filename': secure_filename(filename),
+                'original_name': filename,
+                'size_mb': round(file_size_mb, 2),
+                'upload_date': datetime.now().isoformat(),
+                'replicated_nodes': [node['id'] for node in selected_nodes],
+                'size_bytes': file_size
+            }
+            
+            # Save file to selected nodes
+            for node in selected_nodes:
+                node_path = os.path.join(self.base_path, node['id'])
+                dest_path = os.path.join(node_path, f"{file_id}_{secure_filename(filename)}")
                 
-                # Save block to a node (round-robin)
-                node_idx = block_num % NODES
-                block_name = f"{file_id}_block{block_num}"
-                block_path = os.path.join(self.node_paths[node_idx], block_name)
+                # Copy file to node
+                shutil.copy2(temp_path, dest_path)
                 
-                with open(block_path, 'wb') as block_file:
-                    block_file.write(data)
-                
-                blocks.append({
-                    'path': block_path,
-                    'node': node_idx,
-                    'size': len(data)
-                })
-                block_num += 1
-        
-        # Save file information
-        file_data = {
-            'id': file_id,
-            'name': filename,
-            'original_name': filename,
-            'size_mb': round(file_size / (1024*1024), 2),
-            'blocks': len(blocks),
-            'upload_date': datetime.now().isoformat(),
-            'block_info': blocks
-        }
-        
-        with open(os.path.join('file_info', f"{file_id}.json"), 'w') as f:
-            json.dump(file_data, f, indent=2)
-        
-        return {
-            'success': True,
-            'id': file_id,
-            'name': filename,
-            'size_mb': file_data['size_mb']
-        }
+                # Update node usage
+                node['storage_used_mb'] += file_size_mb
+                node['files'] += 1
+            
+            # Save metadata
+            metadata_path = os.path.join('metadata', f"{file_id}.json")
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            
+            # Save updated nodes
+            self.node_manager.save_nodes(self.node_manager.nodes)
+            
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            
+            return {
+                'success': True,
+                'file_id': file_id,
+                'filename': filename,
+                'size_mb': round(file_size_mb, 2),
+                'replicated_on': len(selected_nodes),
+                'nodes': [node['id'] for node in selected_nodes]
+            }
+        except Exception as e:
+            # Clean up temp file if it exists and the upload failed midway
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                 os.remove(temp_path)
+            return {'error': f'Upload failed: {str(e)}'}
     
-    def get_file(self, file_id):
-        """Reassemble file from blocks"""
-        info_path = os.path.join('file_info', f"{file_id}.json")
-        
-        if not os.path.exists(info_path):
-            return {'error': 'File not found'}
-        
-        with open(info_path, 'r') as f:
-            file_data = json.load(f)
-        
-        # Reassemble file
-        temp_path = os.path.join('temp', f"download_{file_id}")
-        
-        with open(temp_path, 'wb') as out_file:
-            for block in file_data['block_info']:
-                if os.path.exists(block['path']):
-                    with open(block['path'], 'rb') as block_file:
-                        out_file.write(block_file.read())
-        
-        return {
-            'success': True,
-            'path': temp_path,
-            'name': file_data['name'],
-            'original_name': file_data['original_name']
-        }
+    def download_file(self, file_id):
+        """Download file from any available node"""
+        try:
+            metadata_path = os.path.join('metadata', f"{file_id}.json")
+            
+            if not os.path.exists(metadata_path):
+                return {'error': 'File not found'}
+            
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+            
+            # Try to get file from any replicated node
+            for node_id in metadata['replicated_nodes']:
+                node_path = os.path.join(self.base_path, node_id)
+                file_path = os.path.join(node_path, f"{file_id}_{metadata['filename']}")
+                
+                if os.path.exists(file_path):
+                    return {
+                        'success': True,
+                        'path': file_path,
+                        'filename': metadata['original_name'],
+                        'from_node': node_id
+                    }
+            
+            return {'error': 'File not found on any node'}
+        except Exception as e:
+            return {'error': f'Download failed: {str(e)}'}
     
     def delete_file(self, file_id):
-        """Delete file and all its blocks"""
-        info_path = os.path.join('file_info', f"{file_id}.json")
-        
-        if not os.path.exists(info_path):
-            return {'error': 'File not found'}
-        
-        with open(info_path, 'r') as f:
-            file_data = json.load(f)
-        
-        # Delete all blocks
-        deleted = 0
-        for block in file_data['block_info']:
-            if os.path.exists(block['path']):
-                os.remove(block['path'])
-                deleted += 1
-        
-        # Delete file info
-        os.remove(info_path)
-        
-        return {
-            'success': True,
-            'deleted_blocks': deleted,
-            'name': file_data['name'],
-            'size_mb': file_data['size_mb']
-        }
+        """Delete file from all nodes"""
+        try:
+            metadata_path = os.path.join('metadata', f"{file_id}.json")
+            
+            if not os.path.exists(metadata_path):
+                return {'error': 'File not found'}
+            
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+            
+            # Delete from all nodes
+            deleted_count = 0
+            for node_id in metadata['replicated_nodes']:
+                node_path = os.path.join(self.base_path, node_id)
+                file_path = os.path.join(node_path, f"{file_id}_{metadata['filename']}")
+                
+                if os.path.exists(file_path):
+                    # Update node storage usage
+                    for node in self.node_manager.nodes:
+                        if node['id'] == node_id:
+                            node['storage_used_mb'] = max(0, node['storage_used_mb'] - metadata['size_mb'])
+                            node['files'] = max(0, node['files'] - 1)
+                            break
+                    
+                    os.remove(file_path)
+                    deleted_count += 1
+            
+            # Delete metadata
+            os.remove(metadata_path)
+            
+            # Save updated nodes
+            self.node_manager.save_nodes(self.node_manager.nodes)
+            
+            return {
+                'success': True,
+                'deleted_from': deleted_count,
+                'filename': metadata['original_name']
+            }
+        except Exception as e:
+            return {'error': f'Delete failed: {str(e)}'}
     
     def get_storage_info(self):
-        """Get total storage information"""
-        total_used = 0
-        
-        for node_path in self.node_paths:
-            if os.path.exists(node_path):
-                for item in os.listdir(node_path):
-                    item_path = os.path.join(node_path, item)
-                    if os.path.isfile(item_path):
-                        total_used += os.path.getsize(item_path)
-        
-        used_mb = total_used / (1024*1024)
-        
-        return {
-            'total_mb': TOTAL_STORAGE_MB,
-            'used_mb': round(used_mb, 2),
-            'available_mb': round(TOTAL_STORAGE_MB - used_mb, 2),
-            'percent_used': round((used_mb / TOTAL_STORAGE_MB) * 100, 1),
-            'files': len(os.listdir('file_info')) if os.path.exists('file_info') else 0
-        }
+        """Get storage information for user view"""
+        try:
+            node_stats = self.node_manager.get_node_stats()
+            
+            return {
+                'total_gb': node_stats['storage_total_gb'],
+                'used_gb': node_stats['storage_used_gb'],
+                'available_gb': round(node_stats['storage_total_gb'] - node_stats['storage_used_gb'], 2),
+                'percent_used': node_stats['storage_percent'],
+                'files': node_stats['total_files']
+            }
+        except Exception as e:
+            return {'error': f'Storage info failed: {str(e)}'}
     
     def get_all_files(self):
-        """Get list of all user files"""
-        files = []
-        
-        if os.path.exists('file_info'):
-            for filename in os.listdir('file_info'):
-                if filename.endswith('.json'):
-                    file_id = filename.replace('.json', '')
-                    with open(os.path.join('file_info', filename), 'r') as f:
-                        file_data = json.load(f)
-                    
-                    files.append({
-                        'id': file_data['id'],
-                        'name': file_data['name'],
-                        'original_name': file_data['original_name'],
-                        'size_mb': file_data['size_mb'],
-                        'upload_date': file_data['upload_date']
-                    })
-        
-        return files
+        """Get all files"""
+        try:
+            files = []
+            
+            if os.path.exists('metadata'):
+                for filename in os.listdir('metadata'):
+                    if filename.endswith('.json'):
+                        file_id = filename.replace('.json', '')
+                        with open(os.path.join('metadata', filename), 'r') as f:
+                            metadata = json.load(f)
+                        
+                        files.append({
+                            'id': file_id,
+                            'name': metadata['filename'],
+                            'original_name': metadata['original_name'],
+                            'size_mb': metadata['size_mb'],
+                            'upload_date': metadata['upload_date'],
+                            'replicated_on': len(metadata['replicated_nodes']),
+                            'nodes': metadata['replicated_nodes']
+                        })
+            
+            return files
+        except Exception as e:
+            print(f"Error loading files: {e}")
+            return []
 
-# Create storage system
-storage = CloudStorage()
+# Initialize managers
+node_manager = NodeManager()
+storage = DistributedStorage(node_manager)
 
+# Routes
 @app.route('/')
 def home():
-    """Main page - User sees ONE storage space"""
+    """User Dashboard"""
     try:
         storage_info = storage.get_storage_info()
         files = storage.get_all_files()
         
-        return render_template('dashboard.html', 
-                             storage=storage_info,
-                             files=files,
-                             total_files=len(files))
+        return render_template('user_dashboard.html',
+                              storage=storage_info,
+                              files=files,
+                              total_files=len(files))
     except Exception as e:
-        print(f"❌ Error loading template: {e}")
-        traceback.print_exc()
-        return f"""
-        <h1>AgriPredict Cloud Storage</h1>
-        <p>Template error: {e}</p>
-        <p>Templates folder: {TEMPLATES_DIR}</p>
-        <p>Exists: {os.path.exists(TEMPLATES_DIR)}</p>
-        """
+        return f"Error loading dashboard: {str(e)}", 500
+
+@app.route('/admin')
+def admin_dashboard():
+    """Admin Dashboard"""
+    try:
+        nodes = node_manager.nodes
+        stats = node_manager.get_node_stats()
+        
+        return render_template('admin_dashboard.html',
+                              nodes=nodes,
+                              stats=stats)
+    except Exception as e:
+        return f"Error loading admin dashboard: {str(e)}", 500
+
+@app.route('/admin/api/start-node/<node_id>', methods=['POST'])
+def admin_start_node(node_id):
+    """Start a node"""
+    if node_manager.start_node(node_id):
+        return jsonify({'success': True, 'message': f'Node {node_id} started'})
+    return jsonify({'error': 'Node not found'}), 404
+
+@app.route('/admin/api/stop-node/<node_id>', methods=['POST'])
+def admin_stop_node(node_id):
+    """Stop a node"""
+    if node_manager.stop_node(node_id):
+        return jsonify({'success': True, 'message': f'Node {node_id} stopped'})
+    return jsonify({'error': 'Node not found'}), 404
+
+@app.route('/admin/api/delete-node/<node_id>', methods=['POST'])
+def admin_delete_node(node_id):
+    """Delete a node"""
+    if node_manager.delete_node(node_id):
+        return jsonify({'success': True, 'message': f'Node {node_id} deleted'})
+    return jsonify({'error': 'Node not found'}), 404
+
+@app.route('/admin/api/add-node', methods=['POST'])
+def admin_add_node():
+    """Add a new node"""
+    try:
+        data = request.json
+        node = node_manager.add_node(data)
+        # Ensure the physical directory for the new node is created immediately
+        node_path = os.path.join(storage.base_path, node['id'])
+        os.makedirs(node_path, exist_ok=True)
+        return jsonify({'success': True, 'node': node})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    """Upload a file"""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file selected'}), 400
-    
-    file = request.files['file']
-    
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-    
-    # Save temporary file
-    filename = secure_filename(file.filename)
-    temp_path = os.path.join('temp', f"upload_{datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}")
-    file.save(temp_path)
-    
-    # Save to distributed storage
-    result = storage.save_file(temp_path, filename)
-    
-    # Clean temp file
-    if os.path.exists(temp_path):
-        os.remove(temp_path)
-    
-    if 'error' in result:
-        return jsonify(result), 400
-    
-    return jsonify(result), 200
+    """Upload file"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file selected'}), 400
+        
+        file = request.files['file']
+        
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Check file size (500MB max)
+        file.seek(0, 2)  # Seek to end
+        file_size = file.tell()  # Get file size
+        file.seek(0)  # Reset file pointer
+        
+        if file_size > app.config['MAX_CONTENT_LENGTH']:
+            return jsonify({'error': f'File must be less than {app.config["MAX_CONTENT_LENGTH"] / (1024*1024)}MB'}), 400
+        
+        # Upload to distributed storage
+        result = storage.upload_file(file, file.filename)
+        
+        if 'error' in result:
+            return jsonify(result), 400
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': f'Upload route error: {str(e)}'}), 500
 
 @app.route('/download/<file_id>')
 def download(file_id):
-    """Download a file"""
-    result = storage.get_file(file_id)
-    
-    if 'error' in result:
-        return jsonify(result), 404
-    
+    """Download file"""
     try:
-        # Send the file
-        response = send_file(
-            result['path'],
-            as_attachment=True,
-            download_name=result['original_name']
-        )
-        return response
+        result = storage.download_file(file_id)
+        
+        if 'error' in result:
+            return jsonify(result), 404
+        
+        return send_file(result['path'],
+                         as_attachment=True,
+                         download_name=result['filename'])
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Download error: {str(e)}'}), 500
 
 @app.route('/delete/<file_id>', methods=['POST'])
 def delete_file(file_id):
-    """Delete a file"""
-    result = storage.delete_file(file_id)
-    
-    if 'error' in result:
-        return jsonify(result), 404
-    
-    return jsonify(result), 200
+    """Delete file"""
+    try:
+        result = storage.delete_file(file_id)
+        
+        if 'error' in result:
+            return jsonify(result), 404
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({'error': f'Delete error: {str(e)}'}), 500
 
 @app.route('/api/storage')
 def api_storage():
-    """Get storage info API"""
+    """Get storage info"""
     return jsonify(storage.get_storage_info())
 
 @app.route('/api/files')
 def api_files():
-    """Get files list API"""
+    """Get files list"""
     return jsonify({'files': storage.get_all_files()})
+
+@app.route('/api/nodes')
+def api_nodes():
+    """Get nodes info"""
+    return jsonify({
+        'nodes': node_manager.nodes,
+        'stats': node_manager.get_node_stats()
+    })
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🚀 AgriPredict Cloud Storage System")
+    print("🚀 AgriPredict Distributed Cloud Storage")
     print("=" * 60)
-    print(f"📊 Total User Storage: {TOTAL_STORAGE_MB / 1024:.1f}GB")
-    print(f"📁 Storage Location: {storage.storage_path}")
-    print(f"🌐 Web Interface: http://localhost:5000")
+    print(f"📊 User Storage: {TOTAL_STORAGE_GB}GB")
+    print(f"🔧 Replication Factor: {REPLICATION_FACTOR}")
+    print(f"🌐 User Dashboard: http://localhost:5000")
+    print(f"⚙️  Admin Dashboard: http://localhost:5000/admin")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=5000, debug=True)
