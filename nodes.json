@@ -3,13 +3,13 @@
     "id": "N1",
     "name": "Node 1",
     "status": "active",
-    "storage_used_mb": 0,
+    "storage_used_mb": 1.1108837127685547,
     "storage_total_mb": 500,
     "cpu_cores": 4,
     "memory_gb": 10,
     "bandwidth_mbps": 800,
     "transfers": 0,
-    "files": 0,
+    "files": 1,
     "created": "2025-12-02T19:15:29.517459"
   },
   {
@@ -55,13 +55,13 @@
     "id": "N5",
     "name": "Node 5",
     "status": "active",
-    "storage_used_mb": 0.0008837127685545898,
+    "storage_used_mb": 1.1117674255371093,
     "storage_total_mb": 500,
     "cpu_cores": 6,
     "memory_gb": 11,
     "bandwidth_mbps": 800,
     "transfers": 0,
-    "files": 0,
+    "files": 1,
     "created": "2025-12-02T19:15:29.517459"
   }
 ]
