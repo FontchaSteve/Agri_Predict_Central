@@ -1,17 +1,29 @@
 """
-AgriPredict Cloud Storage - Admin + User Dashboard
+AgriPredict Cloud Storage - Admin + User Dashboard with Authentication
 """
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for
+from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash
 import os
 import json
 import hashlib
 import shutil
+import random
 from datetime import datetime
 from werkzeug.utils import secure_filename
-import random
+from functools import wraps
+
+# Import authentication helpers
+from auth_helpers import (
+    init_database, verify_user_credentials, create_user, 
+    update_last_login, create_otp, verify_otp as verify_otp_auth,  # CHANGED: Renamed imported function
+    get_user_by_id, get_user_storage_info, update_user_storage,
+    log_activity, get_user_by_username
+)
+
+# Import email service
+from email_service import email_service
 
 app = Flask(__name__, template_folder='templates')
-app.secret_key = 'agripredict-2024-secret'
+app.secret_key = 'agripredict-2024-secure-auth-key'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 
 # Storage settings
@@ -25,6 +37,218 @@ os.makedirs('temp', exist_ok=True)
 os.makedirs('metadata', exist_ok=True)
 os.makedirs('templates', exist_ok=True)
 
+# Authentication decorators
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please login to access this page', 'error')
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Please login to access this page', 'error')
+            return redirect('/login')
+        
+        user = get_user_by_id(session['user_id'])
+        if not user or user['role'] != 'admin':
+            flash('Admin access required', 'error')
+            return redirect('/')
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+def otp_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect('/login')
+        
+        # Admin doesn't need OTP
+        user = get_user_by_id(session['user_id'])
+        if user and user['role'] == 'admin':
+            return f(*args, **kwargs)
+        
+        # Normal users need OTP verification
+        if session.get('otp_verified') != True:
+            flash('OTP verification required', 'error')
+            return redirect('/verify-otp')
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Authentication routes
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """User login"""
+    if 'user_id' in session:
+        if session.get('role') == 'admin':
+            return redirect('/admin')
+        elif session.get('otp_verified'):
+            return redirect('/')
+        else:
+            return redirect('/verify-otp')
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        user = verify_user_credentials(username, password)
+        
+        if user:
+            # Store user info in session
+            session['user_id'] = user['id']
+            session['username'] = user['username']
+            session['role'] = user['role']
+            session['email'] = user['email']
+            
+            # Update last login
+            update_last_login(user['id'])
+            
+            # Log activity
+            log_activity(user['id'], 'login', request.remote_addr)
+            
+            # Role-based handling
+            if user['role'] == 'admin':
+                # Admin doesn't need OTP
+                session['otp_verified'] = True
+                flash('Welcome back, Admin!', 'success')
+                return redirect('/admin')
+            else:
+                # Generate OTP for normal users
+                otp_code = create_otp(user['id'])
+                
+                # Send OTP via email
+                email_sent = email_service.send_otp_email(
+                    user['email'], 
+                    otp_code, 
+                    user['username']
+                )
+                
+                if email_sent:
+                    flash(f'OTP sent to {user["email"]}. Check your email.', 'success')
+                else:
+                    flash(f'OTP: {otp_code} (Email not configured, check console)', 'info')
+                
+                return redirect('/verify-otp')
+        else:
+            flash('Invalid username or password', 'error')
+    
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    """User registration"""
+    if 'user_id' in session:
+        return redirect('/')
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        email = request.form.get('email')
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        
+        # Validation
+        errors = []
+        
+        if len(username) < 3:
+            errors.append('Username must be at least 3 characters')
+        
+        if len(password) < 6:
+            errors.append('Password must be at least 6 characters')
+        
+        if password != confirm_password:
+            errors.append('Passwords do not match')
+        
+        if errors:
+            for error in errors:
+                flash(error, 'error')
+            return render_template('register.html')
+        
+        # Check if user exists
+        existing_user = get_user_by_username(username)
+        if existing_user:
+            flash('Username already exists', 'error')
+            return render_template('register.html')
+        
+        # Create user
+        user_id = create_user(username, email, password, role='user')
+        
+        if user_id:
+            flash('Registration successful! Please login.', 'success')
+            return redirect('/login')
+        else:
+            flash('Registration failed. Username or email may already exist.', 'error')
+    
+    return render_template('register.html')
+
+@app.route('/verify-otp', methods=['GET', 'POST'])
+@login_required
+def verify_otp():
+    """Verify OTP for normal users"""
+    # If already verified or admin, redirect
+    if session.get('role') == 'admin' or session.get('otp_verified'):
+        if session.get('role') == 'admin':
+            return redirect('/admin')
+        return redirect('/')
+    
+    if request.method == 'POST':
+        otp_code = request.form.get('otp')
+        
+        if not otp_code or len(otp_code) != 6:
+            flash('Please enter a valid 6-digit OTP', 'error')
+            return render_template('verify_otp.html', email=session.get('email'))
+        
+        # FIXED: Use the renamed imported function instead of calling itself recursively
+        if verify_otp_auth(session['user_id'], otp_code):  # Changed from verify_otp to verify_otp_auth
+            session['otp_verified'] = True
+            flash('OTP verified successfully!', 'success')
+            return redirect('/')
+        else:
+            flash('Invalid or expired OTP code', 'error')
+    
+    return render_template('verify_otp.html', email=session.get('email'))
+
+@app.route('/resend-otp', methods=['POST'])
+@login_required
+def resend_otp():
+    """Resend OTP code"""
+    if session.get('role') == 'admin' or session.get('otp_verified'):
+        return redirect('/')
+    
+    # Generate new OTP
+    otp_code = create_otp(session['user_id'])
+    
+    # Send OTP via email
+    email_sent = email_service.send_otp_email(
+        session.get('email'), 
+        otp_code, 
+        session.get('username')
+    )
+    
+    if email_sent:
+        flash('New OTP sent to your email.', 'success')
+    else:
+        flash(f'New OTP: {otp_code} (Email not configured, check console)', 'info')
+    
+    return redirect('/verify-otp')
+
+@app.route('/logout')
+def logout():
+    """User logout"""
+    user_id = session.get('user_id')
+    if user_id:
+        log_activity(user_id, 'logout', request.remote_addr)
+    
+    session.clear()
+    flash('You have been logged out successfully', 'info')
+    return redirect('/login')
+
+# Keep existing NodeManager and DistributedStorage classes
 class NodeManager:
     def __init__(self):
         self.nodes_file = 'nodes.json'
@@ -85,7 +309,6 @@ class NodeManager:
     
     def delete_node(self, node_id):
         """Delete a node (mark as deleted)"""
-        # NOTE: This does not clean up the physical storage folder on disk.
         self.nodes = [node for node in self.nodes if node['id'] != node_id]
         self.save_nodes(self.nodes)
         return True
@@ -97,7 +320,7 @@ class NodeManager:
             'name': node_data.get('name', f'Node {len(self.nodes) + 1}'),
             'status': 'active',
             'storage_used_mb': 0,
-            'storage_total_mb': node_data.get('storage_total_mb', STORAGE_PER_NODE_MB), # Use provided storage if available
+            'storage_total_mb': node_data.get('storage_total_mb', STORAGE_PER_NODE_MB),
             'cpu_cores': node_data.get('cpu_cores', 4),
             'memory_gb': node_data.get('memory_gb', 8),
             'bandwidth_mbps': node_data.get('bandwidth_mbps', 1000),
@@ -114,7 +337,6 @@ class NodeManager:
         active = len([n for n in self.nodes if n['status'] == 'active'])
         total = len(self.nodes)
         
-        # Calculate storage usage
         total_storage_mb = sum(n['storage_total_mb'] for n in self.nodes)
         used_storage_mb = sum(n['storage_used_mb'] for n in self.nodes)
         
@@ -133,58 +355,56 @@ class DistributedStorage:
         self.node_manager = node_manager
         self.base_path = os.path.join(os.path.expanduser("~"), "AgriPredict_Cloud")
         
-        # Ensure the base path exists
         os.makedirs(self.base_path, exist_ok=True)
         
-        # 🌟 FIX: Ensure all node-specific directories exist 🌟
-        # This will run every time the app starts and is robust 
-        # against running the app multiple times or adding new nodes.
         for node in node_manager.nodes:
             node_path = os.path.join(self.base_path, node['id'])
             os.makedirs(node_path, exist_ok=True)
     
-    def upload_file(self, file_stream, filename):
+    def upload_file(self, file_stream, filename, user_id=None):
         """Upload file with replication across nodes"""
         try:
+            # Check user storage limit
+            if user_id:
+                storage_info = get_user_storage_info(user_id)
+                if storage_info:
+                    file_stream.seek(0, 2)
+                    file_size_gb = file_stream.tell() / (1024 * 1024 * 1024)
+                    file_stream.seek(0)
+                    
+                    if storage_info['used_gb'] + file_size_gb > storage_info['total_gb']:
+                        return {'error': 'Exceeds your storage limit'}
+            
             active_nodes = self.node_manager.get_active_nodes()
             if len(active_nodes) < REPLICATION_FACTOR:
                 return {'error': f'Need at least {REPLICATION_FACTOR} active nodes for replication'}
             
-            # Save file temporarily
-            # IMPORTANT: The file_stream passed to upload_file is a FileStorage object.
-            # Calling .save() on it saves the uploaded file to the specified path.
             temp_path = os.path.join('temp', f"temp_{datetime.now().strftime('%Y%m%d%H%M%S')}_{secure_filename(filename)}")
             file_stream.save(temp_path)
             
             file_id = hashlib.md5(f"{filename}{datetime.now()}".encode()).hexdigest()[:12]
             file_size = os.path.getsize(temp_path)
             file_size_mb = file_size / (1024 * 1024)
+            file_size_gb = file_size_mb / 1024
             
-            # Check if enough storage space available
+            # Check storage space
             node_stats = self.node_manager.get_node_stats()
-            # We need enough available space for REPLICATION_FACTOR copies
-            required_space_gb = (file_size_mb / 1024) * REPLICATION_FACTOR
+            required_space_gb = file_size_gb * REPLICATION_FACTOR
             available_gb = node_stats['storage_total_gb'] - node_stats['storage_used_gb']
             
             if available_gb < required_space_gb:
                 os.remove(temp_path)
-                return {'error': f'Not enough total storage space (Required: {round(required_space_gb, 2)}GB)'}
+                return {'error': f'Not enough total storage space'}
             
-            # Select nodes for replication (choose random active nodes)
             selected_nodes = random.sample(active_nodes, min(REPLICATION_FACTOR, len(active_nodes)))
             
-            # Final check per node availability (storage_total_mb - storage_used_mb)
-            can_store = True
+            # Check per node availability
             for node in selected_nodes:
                 if node['storage_total_mb'] - node['storage_used_mb'] < file_size_mb:
-                    can_store = False
-                    break
-
-            if not can_store:
-                os.remove(temp_path)
-                return {'error': 'Not enough space on selected replication nodes.'}
+                    os.remove(temp_path)
+                    return {'error': 'Not enough space on selected replication nodes.'}
             
-            # Create metadata
+            # Create metadata with user_id
             metadata = {
                 'file_id': file_id,
                 'filename': secure_filename(filename),
@@ -192,18 +412,17 @@ class DistributedStorage:
                 'size_mb': round(file_size_mb, 2),
                 'upload_date': datetime.now().isoformat(),
                 'replicated_nodes': [node['id'] for node in selected_nodes],
-                'size_bytes': file_size
+                'size_bytes': file_size,
+                'user_id': user_id
             }
             
-            # Save file to selected nodes
+            # Save file to nodes
             for node in selected_nodes:
                 node_path = os.path.join(self.base_path, node['id'])
                 dest_path = os.path.join(node_path, f"{file_id}_{secure_filename(filename)}")
                 
-                # Copy file to node
                 shutil.copy2(temp_path, dest_path)
                 
-                # Update node usage
                 node['storage_used_mb'] += file_size_mb
                 node['files'] += 1
             
@@ -212,10 +431,13 @@ class DistributedStorage:
             with open(metadata_path, 'w') as f:
                 json.dump(metadata, f, indent=2)
             
-            # Save updated nodes
             self.node_manager.save_nodes(self.node_manager.nodes)
             
-            # Clean up temp file
+            # Update user storage usage
+            if user_id:
+                update_user_storage(user_id, file_size_gb)
+                log_activity(user_id, f'upload:{filename}', request.remote_addr)
+            
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             
@@ -228,7 +450,6 @@ class DistributedStorage:
                 'nodes': [node['id'] for node in selected_nodes]
             }
         except Exception as e:
-            # Clean up temp file if it exists and the upload failed midway
             if 'temp_path' in locals() and os.path.exists(temp_path):
                  os.remove(temp_path)
             return {'error': f'Upload failed: {str(e)}'}
@@ -244,12 +465,15 @@ class DistributedStorage:
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
             
-            # Try to get file from any replicated node
             for node_id in metadata['replicated_nodes']:
                 node_path = os.path.join(self.base_path, node_id)
                 file_path = os.path.join(node_path, f"{file_id}_{metadata['filename']}")
                 
                 if os.path.exists(file_path):
+                    # Log download activity
+                    if metadata.get('user_id'):
+                        log_activity(metadata['user_id'], f'download:{metadata["filename"]}', request.remote_addr)
+                    
                     return {
                         'success': True,
                         'path': file_path,
@@ -261,7 +485,7 @@ class DistributedStorage:
         except Exception as e:
             return {'error': f'Download failed: {str(e)}'}
     
-    def delete_file(self, file_id):
+    def delete_file(self, file_id, user_id=None):
         """Delete file from all nodes"""
         try:
             metadata_path = os.path.join('metadata', f"{file_id}.json")
@@ -272,14 +496,18 @@ class DistributedStorage:
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
             
-            # Delete from all nodes
+            # Check if user owns this file (unless admin)
+            if user_id and metadata.get('user_id') != user_id:
+                user = get_user_by_id(user_id)
+                if not user or user['role'] != 'admin':
+                    return {'error': 'You do not have permission to delete this file'}
+            
             deleted_count = 0
             for node_id in metadata['replicated_nodes']:
                 node_path = os.path.join(self.base_path, node_id)
                 file_path = os.path.join(node_path, f"{file_id}_{metadata['filename']}")
                 
                 if os.path.exists(file_path):
-                    # Update node storage usage
                     for node in self.node_manager.nodes:
                         if node['id'] == node_id:
                             node['storage_used_mb'] = max(0, node['storage_used_mb'] - metadata['size_mb'])
@@ -289,11 +517,11 @@ class DistributedStorage:
                     os.remove(file_path)
                     deleted_count += 1
             
-            # Delete metadata
             os.remove(metadata_path)
-            
-            # Save updated nodes
             self.node_manager.save_nodes(self.node_manager.nodes)
+            
+            if user_id:
+                log_activity(user_id, f'delete:{metadata["original_name"]}', request.remote_addr)
             
             return {
                 'success': True,
@@ -303,23 +531,8 @@ class DistributedStorage:
         except Exception as e:
             return {'error': f'Delete failed: {str(e)}'}
     
-    def get_storage_info(self):
-        """Get storage information for user view"""
-        try:
-            node_stats = self.node_manager.get_node_stats()
-            
-            return {
-                'total_gb': node_stats['storage_total_gb'],
-                'used_gb': node_stats['storage_used_gb'],
-                'available_gb': round(node_stats['storage_total_gb'] - node_stats['storage_used_gb'], 2),
-                'percent_used': node_stats['storage_percent'],
-                'files': node_stats['total_files']
-            }
-        except Exception as e:
-            return {'error': f'Storage info failed: {str(e)}'}
-    
-    def get_all_files(self):
-        """Get all files"""
+    def get_user_files(self, user_id):
+        """Get files for a specific user"""
         try:
             files = []
             
@@ -330,41 +543,55 @@ class DistributedStorage:
                         with open(os.path.join('metadata', filename), 'r') as f:
                             metadata = json.load(f)
                         
-                        files.append({
-                            'id': file_id,
-                            'name': metadata['filename'],
-                            'original_name': metadata['original_name'],
-                            'size_mb': metadata['size_mb'],
-                            'upload_date': metadata['upload_date'],
-                            'replicated_on': len(metadata['replicated_nodes']),
-                            'nodes': metadata['replicated_nodes']
-                        })
+                        # Only return files belonging to this user
+                        if metadata.get('user_id') == user_id:
+                            files.append({
+                                'id': file_id,
+                                'name': metadata['filename'],
+                                'original_name': metadata['original_name'],
+                                'size_mb': metadata['size_mb'],
+                                'upload_date': metadata['upload_date'],
+                                'replicated_on': len(metadata['replicated_nodes']),
+                                'nodes': metadata['replicated_nodes']
+                            })
             
             return files
         except Exception as e:
-            print(f"Error loading files: {e}")
+            print(f"Error loading user files: {e}")
             return []
 
 # Initialize managers
 node_manager = NodeManager()
 storage = DistributedStorage(node_manager)
 
-# Routes
+# Protected routes
 @app.route('/')
+@login_required
+@otp_required
 def home():
     """User Dashboard"""
     try:
-        storage_info = storage.get_storage_info()
-        files = storage.get_all_files()
+        # Get user-specific storage info
+        storage_info = get_user_storage_info(session['user_id']) or {
+            'total_gb': 2.5,
+            'used_gb': 0,
+            'available_gb': 2.5,
+            'percent_used': 0
+        }
+        
+        files = storage.get_user_files(session['user_id'])
         
         return render_template('user_dashboard.html',
                               storage=storage_info,
                               files=files,
-                              total_files=len(files))
+                              total_files=len(files),
+                              username=session.get('username'))
     except Exception as e:
-        return f"Error loading dashboard: {str(e)}", 500
+        flash(f'Error loading dashboard: {str(e)}', 'error')
+        return render_template('user_dashboard.html', storage={}, files=[], username=session.get('username'))
 
 @app.route('/admin')
+@admin_required
 def admin_dashboard():
     """Admin Dashboard"""
     try:
@@ -372,46 +599,17 @@ def admin_dashboard():
         stats = node_manager.get_node_stats()
         
         return render_template('admin_dashboard.html',
-                              nodes=nodes,
-                              stats=stats)
+                             nodes=nodes,
+                             stats=stats,
+                             username=session.get('username'))
     except Exception as e:
-        return f"Error loading admin dashboard: {str(e)}", 500
+        flash(f'Error loading admin dashboard: {str(e)}', 'error')
+        return render_template('admin_dashboard.html', nodes=[], stats={}, username=session.get('username'))
 
-@app.route('/admin/api/start-node/<node_id>', methods=['POST'])
-def admin_start_node(node_id):
-    """Start a node"""
-    if node_manager.start_node(node_id):
-        return jsonify({'success': True, 'message': f'Node {node_id} started'})
-    return jsonify({'error': 'Node not found'}), 404
-
-@app.route('/admin/api/stop-node/<node_id>', methods=['POST'])
-def admin_stop_node(node_id):
-    """Stop a node"""
-    if node_manager.stop_node(node_id):
-        return jsonify({'success': True, 'message': f'Node {node_id} stopped'})
-    return jsonify({'error': 'Node not found'}), 404
-
-@app.route('/admin/api/delete-node/<node_id>', methods=['POST'])
-def admin_delete_node(node_id):
-    """Delete a node"""
-    if node_manager.delete_node(node_id):
-        return jsonify({'success': True, 'message': f'Node {node_id} deleted'})
-    return jsonify({'error': 'Node not found'}), 404
-
-@app.route('/admin/api/add-node', methods=['POST'])
-def admin_add_node():
-    """Add a new node"""
-    try:
-        data = request.json
-        node = node_manager.add_node(data)
-        # Ensure the physical directory for the new node is created immediately
-        node_path = os.path.join(storage.base_path, node['id'])
-        os.makedirs(node_path, exist_ok=True)
-        return jsonify({'success': True, 'node': node})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-
+# File operations (protected with OTP)
 @app.route('/upload', methods=['POST'])
+@login_required
+@otp_required
 def upload():
     """Upload file"""
     try:
@@ -423,16 +621,14 @@ def upload():
         if file.filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
-        # Check file size (500MB max)
-        file.seek(0, 2)  # Seek to end
-        file_size = file.tell()  # Get file size
-        file.seek(0)  # Reset file pointer
+        file.seek(0, 2)
+        file_size = file.tell()
+        file.seek(0)
         
         if file_size > app.config['MAX_CONTENT_LENGTH']:
-            return jsonify({'error': f'File must be less than {app.config["MAX_CONTENT_LENGTH"] / (1024*1024)}MB'}), 400
+            return jsonify({'error': f'File must be less than 500MB'}), 400
         
-        # Upload to distributed storage
-        result = storage.upload_file(file, file.filename)
+        result = storage.upload_file(file, file.filename, session['user_id'])
         
         if 'error' in result:
             return jsonify(result), 400
@@ -442,6 +638,8 @@ def upload():
         return jsonify({'error': f'Upload route error: {str(e)}'}), 500
 
 @app.route('/download/<file_id>')
+@login_required
+@otp_required
 def download(file_id):
     """Download file"""
     try:
@@ -457,10 +655,12 @@ def download(file_id):
         return jsonify({'error': f'Download error: {str(e)}'}), 500
 
 @app.route('/delete/<file_id>', methods=['POST'])
+@login_required
+@otp_required
 def delete_file(file_id):
     """Delete file"""
     try:
-        result = storage.delete_file(file_id)
+        result = storage.delete_file(file_id, session['user_id'])
         
         if 'error' in result:
             return jsonify(result), 404
@@ -469,32 +669,91 @@ def delete_file(file_id):
     except Exception as e:
         return jsonify({'error': f'Delete error: {str(e)}'}), 500
 
+# API routes
 @app.route('/api/storage')
+@login_required
+@otp_required
 def api_storage():
-    """Get storage info"""
-    return jsonify(storage.get_storage_info())
+    """Get storage info for current user"""
+    storage_info = get_user_storage_info(session['user_id']) or {
+        'total_gb': 2.5,
+        'used_gb': 0,
+        'available_gb': 2.5,
+        'percent_used': 0
+    }
+    return jsonify(storage_info)
 
 @app.route('/api/files')
+@login_required
+@otp_required
 def api_files():
-    """Get files list"""
-    return jsonify({'files': storage.get_all_files()})
+    """Get files list for current user"""
+    files = storage.get_user_files(session['user_id'])
+    return jsonify({'files': files})
 
 @app.route('/api/nodes')
+@admin_required
 def api_nodes():
-    """Get nodes info"""
+    """Get nodes info (admin only)"""
     return jsonify({
         'nodes': node_manager.nodes,
         'stats': node_manager.get_node_stats()
     })
 
+# Admin API routes
+@app.route('/admin/api/start-node/<node_id>', methods=['POST'])
+@admin_required
+def admin_start_node(node_id):
+    """Start a node"""
+    if node_manager.start_node(node_id):
+        return jsonify({'success': True, 'message': f'Node {node_id} started'})
+    return jsonify({'error': 'Node not found'}), 404
+
+@app.route('/admin/api/stop-node/<node_id>', methods=['POST'])
+@admin_required
+def admin_stop_node(node_id):
+    """Stop a node"""
+    if node_manager.stop_node(node_id):
+        return jsonify({'success': True, 'message': f'Node {node_id} stopped'})
+    return jsonify({'error': 'Node not found'}), 404
+
+@app.route('/admin/api/delete-node/<node_id>', methods=['POST'])
+@admin_required
+def admin_delete_node(node_id):
+    """Delete a node"""
+    if node_manager.delete_node(node_id):
+        return jsonify({'success': True, 'message': f'Node {node_id} deleted'})
+    return jsonify({'error': 'Node not found'}), 404
+
+@app.route('/admin/api/add-node', methods=['POST'])
+@admin_required
+def admin_add_node():
+    """Add a new node"""
+    data = request.json
+    node = node_manager.add_node(data)
+    return jsonify({'success': True, 'node': node})
+
 if __name__ == '__main__':
+    # Initialize database
+    init_database()
+    
     print("=" * 60)
     print("🚀 AgriPredict Distributed Cloud Storage")
+    print("🔐 Complete Authentication System with OTP via Email")
     print("=" * 60)
-    print(f"📊 User Storage: {TOTAL_STORAGE_GB}GB")
-    print(f"🔧 Replication Factor: {REPLICATION_FACTOR}")
+    print(f"📊 Default Admin: admin / password1234")
+    print(f"🔐 Login: http://localhost:5000/login")
+    print(f"📝 Register: http://localhost:5000/register")
     print(f"🌐 User Dashboard: http://localhost:5000")
-    print(f"⚙️  Admin Dashboard: http://localhost:5000/admin")
+    print(f"⚙️  Admin Dashboard: http://localhost:5000/admin")
+    print("=" * 60)
+    print("📧 OTP Codes are sent via email (or printed to console if not configured)")
+    print("=" * 60)
+    print("To configure email, create a .env file with:")
+    print("SMTP_SERVER=smtp.gmail.com")
+    print("SMTP_PORT=587")
+    print("SENDER_EMAIL=your_email@gmail.com")
+    print("SENDER_PASSWORD=your_app_password")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=5000, debug=True)
