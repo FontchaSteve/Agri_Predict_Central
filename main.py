@@ -14,7 +14,7 @@ from functools import wraps
 # Import authentication helpers
 from auth_helpers import (
     init_database, verify_user_credentials, create_user, 
-    update_last_login, create_otp, verify_otp as verify_otp_auth,  # CHANGED: Renamed imported function
+    update_last_login, create_otp, verify_otp as verify_otp_auth,
     get_user_by_id, get_user_storage_info, update_user_storage,
     log_activity, get_user_by_username
 )
@@ -204,7 +204,7 @@ def verify_otp():
             return render_template('verify_otp.html', email=session.get('email'))
         
         # FIXED: Use the renamed imported function instead of calling itself recursively
-        if verify_otp_auth(session['user_id'], otp_code):  # Changed from verify_otp to verify_otp_auth
+        if verify_otp_auth(session['user_id'], otp_code):
             session['otp_verified'] = True
             flash('OTP verified successfully!', 'success')
             return redirect('/')
@@ -369,7 +369,8 @@ class DistributedStorage:
                 storage_info = get_user_storage_info(user_id)
                 if storage_info:
                     file_stream.seek(0, 2)
-                    file_size_gb = file_stream.tell() / (1024 * 1024 * 1024)
+                    file_size_bytes = file_stream.tell()
+                    file_size_gb = file_size_bytes / (1024 * 1024 * 1024)
                     file_stream.seek(0)
                     
                     if storage_info['used_gb'] + file_size_gb > storage_info['total_gb']:
@@ -410,9 +411,10 @@ class DistributedStorage:
                 'filename': secure_filename(filename),
                 'original_name': filename,
                 'size_mb': round(file_size_mb, 2),
+                'size_bytes': file_size,
+                'size_gb': round(file_size_gb, 3),  # Store GB with 3 decimal places
                 'upload_date': datetime.now().isoformat(),
                 'replicated_nodes': [node['id'] for node in selected_nodes],
-                'size_bytes': file_size,
                 'user_id': user_id
             }
             
@@ -435,7 +437,7 @@ class DistributedStorage:
             
             # Update user storage usage
             if user_id:
-                update_user_storage(user_id, file_size_gb)
+                update_user_storage(user_id, round(file_size_gb, 3))  # Store with 3 decimal places
                 log_activity(user_id, f'upload:{filename}', request.remote_addr)
             
             if os.path.exists(temp_path):
@@ -446,6 +448,7 @@ class DistributedStorage:
                 'file_id': file_id,
                 'filename': filename,
                 'size_mb': round(file_size_mb, 2),
+                'size_gb': round(file_size_gb, 3),
                 'replicated_on': len(selected_nodes),
                 'nodes': [node['id'] for node in selected_nodes]
             }
@@ -520,7 +523,11 @@ class DistributedStorage:
             os.remove(metadata_path)
             self.node_manager.save_nodes(self.node_manager.nodes)
             
-            if user_id:
+            # Update user storage usage (subtract file size)
+            if user_id and metadata.get('user_id') == user_id:
+                # Subtract the file size from user storage
+                file_size_gb = metadata.get('size_gb', metadata['size_mb'] / 1024)
+                update_user_storage(user_id, -file_size_gb)  # Negative to subtract
                 log_activity(user_id, f'delete:{metadata["original_name"]}', request.remote_addr)
             
             return {
@@ -550,6 +557,7 @@ class DistributedStorage:
                                 'name': metadata['filename'],
                                 'original_name': metadata['original_name'],
                                 'size_mb': metadata['size_mb'],
+                                'size_gb': metadata.get('size_gb', round(metadata['size_mb'] / 1024, 3)),
                                 'upload_date': metadata['upload_date'],
                                 'replicated_on': len(metadata['replicated_nodes']),
                                 'nodes': metadata['replicated_nodes']
@@ -564,6 +572,41 @@ class DistributedStorage:
 node_manager = NodeManager()
 storage = DistributedStorage(node_manager)
 
+# Helper function to format storage display
+def format_storage_display(storage_info):
+    """Format storage info for display with proper rounding"""
+    if not storage_info:
+        return {
+            'total_gb': 2.5,
+            'used_gb': 0,
+            'available_gb': 2.5,
+            'percent_used': 0,
+            'used_gb_display': '0.000',
+            'available_gb_display': '2.500',
+            'percent_used_display': 0
+        }
+    
+    # Ensure values are properly rounded
+    used_gb = round(storage_info.get('used_gb', 0), 3)
+    total_gb = storage_info.get('total_gb', 2.5)
+    available_gb = round(total_gb - used_gb, 3)
+    
+    # Calculate percentage
+    if total_gb > 0:
+        percent_used = (used_gb / total_gb) * 100
+    else:
+        percent_used = 0
+    
+    return {
+        'total_gb': total_gb,
+        'used_gb': used_gb,
+        'available_gb': available_gb,
+        'percent_used': percent_used,
+        'used_gb_display': f'{used_gb:.3f}',
+        'available_gb_display': f'{available_gb:.3f}',
+        'percent_used_display': round(percent_used, 1)
+    }
+
 # Protected routes
 @app.route('/')
 @login_required
@@ -572,23 +615,25 @@ def home():
     """User Dashboard"""
     try:
         # Get user-specific storage info
-        storage_info = get_user_storage_info(session['user_id']) or {
-            'total_gb': 2.5,
-            'used_gb': 0,
-            'available_gb': 2.5,
-            'percent_used': 0
-        }
+        storage_info = get_user_storage_info(session['user_id'])
+        
+        # Format storage display
+        formatted_storage = format_storage_display(storage_info)
         
         files = storage.get_user_files(session['user_id'])
         
         return render_template('user_dashboard.html',
-                              storage=storage_info,
+                              storage=formatted_storage,
                               files=files,
                               total_files=len(files),
                               username=session.get('username'))
     except Exception as e:
         flash(f'Error loading dashboard: {str(e)}', 'error')
-        return render_template('user_dashboard.html', storage={}, files=[], username=session.get('username'))
+        default_storage = format_storage_display(None)
+        return render_template('user_dashboard.html', 
+                             storage=default_storage, 
+                             files=[], 
+                             username=session.get('username'))
 
 @app.route('/admin')
 @admin_required
@@ -675,13 +720,9 @@ def delete_file(file_id):
 @otp_required
 def api_storage():
     """Get storage info for current user"""
-    storage_info = get_user_storage_info(session['user_id']) or {
-        'total_gb': 2.5,
-        'used_gb': 0,
-        'available_gb': 2.5,
-        'percent_used': 0
-    }
-    return jsonify(storage_info)
+    storage_info = get_user_storage_info(session['user_id'])
+    formatted_storage = format_storage_display(storage_info)
+    return jsonify(formatted_storage)
 
 @app.route('/api/files')
 @login_required
