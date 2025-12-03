@@ -48,14 +48,45 @@
             color: #1a2980;
         }
         
-        .logo h1 {
-            font-size: 24px;
-            color: #333;
+        .logo-content {
+            display: flex;
+            flex-direction: column;
         }
         
-        .logo p {
-            color: #666;
+        .logo-content h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .admin-info {
             font-size: 14px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .admin-info span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .logout-btn {
+            color: #1a2980;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(26, 41, 128, 0.1);
         }
         
         .nav-btn {
@@ -330,6 +361,7 @@
             color: white;
             margin-top: 40px;
             opacity: 0.8;
+            font-size: 14px;
         }
         
         /* Modal */
@@ -422,6 +454,54 @@
             color: #333;
         }
         
+        /* Flash Messages */
+        .flash-messages {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+        
+        .flash {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            max-width: 300px;
+        }
+        
+        .flash.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .flash.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .flash.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
         /* Responsive */
         @media (max-width: 768px) {
             .nodes-grid {
@@ -430,6 +510,17 @@
             
             .stats-grid {
                 grid-template-columns: 1fr;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .logo {
+                flex-direction: column;
+                text-align: center;
             }
         }
     </style>
@@ -440,14 +531,42 @@
         <div class="header">
             <div class="logo">
                 <i class="fas fa-server"></i>
-                <div>
+                <div class="logo-content">
                     <h1>Admin Dashboard</h1>
-                    <p>Manage Nodes & Storage</p>
+                    <div class="admin-info">
+                        <span>
+                            <i class="fas fa-user-shield"></i>
+                            Admin {{ username }}
+                        </span>
+                        <a href="/logout" class="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </div>
                 </div>
             </div>
             <a href="/" class="nav-btn">
                 <i class="fas fa-home"></i> User Dashboard
             </a>
+        </div>
+        
+        <!-- Flash Messages -->
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">
+                            {% if category == 'success' %}
+                                <i class="fas fa-check-circle"></i>
+                            {% elif category == 'error' %}
+                                <i class="fas fa-exclamation-circle"></i>
+                            {% else %}
+                                <i class="fas fa-info-circle"></i>
+                            {% endif %}
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
         </div>
         
         <!-- Stats Cards -->
@@ -457,8 +576,8 @@
                     <i class="fas fa-server"></i>
                 </div>
                 <div class="stat-title">Active Nodes</div>
-                <div class="stat-value" id="activeNodes">0</div>
-                <div class="stat-detail" id="totalNodes">of 0 total</div>
+                <div class="stat-value" id="activeNodes">{{ stats.active_nodes }}</div>
+                <div class="stat-detail">of {{ stats.total_nodes }} total</div>
             </div>
             
             <div class="stat-card">
@@ -466,17 +585,17 @@
                     <i class="fas fa-database"></i>
                 </div>
                 <div class="stat-title">Storage Usage</div>
-                <div class="stat-value" id="storageUsed">0%</div>
-                <div class="stat-detail" id="storageSize">0 GB / 0 GB</div>
+                <div class="stat-value" id="storageUsed">{{ stats.storage_percent }}%</div>
+                <div class="stat-detail">{{ stats.storage_used_gb }} GB / {{ stats.storage_total_gb }} GB</div>
             </div>
             
             <div class="stat-card">
                 <div class="stat-icon">
                     <i class="fas fa-exchange-alt"></i>
                 </div>
-                <div class="stat-title">Active Transfers</div>
-                <div class="stat-value" id="activeTransfers">0</div>
-                <div class="stat-detail">in progress</div>
+                <div class="stat-title">Total Transfers</div>
+                <div class="stat-value" id="activeTransfers">{{ stats.total_transfers }}</div>
+                <div class="stat-detail">across all nodes</div>
             </div>
             
             <div class="stat-card">
@@ -484,7 +603,7 @@
                     <i class="fas fa-file"></i>
                 </div>
                 <div class="stat-title">Total Files</div>
-                <div class="stat-value" id="totalFiles">0</div>
+                <div class="stat-value" id="totalFiles">{{ stats.total_files }}</div>
                 <div class="stat-detail">stored across nodes</div>
             </div>
         </div>
@@ -493,10 +612,10 @@
         <div class="storage-progress">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <div style="font-weight: 600; color: #333;">Storage Distribution</div>
-                <div style="color: #666; font-size: 14px;" id="storagePercent">0% used</div>
+                <div style="color: #666; font-size: 14px;" id="storagePercent">{{ stats.storage_percent }}% used</div>
             </div>
             <div class="progress-container">
-                <div class="progress-fill" id="storageProgress" style="width: 0%"></div>
+                <div class="progress-fill" id="storageProgress" data-width="{{ stats.storage_percent }}"></div>
             </div>
         </div>
         
@@ -512,7 +631,74 @@
             </div>
             
             <div class="nodes-grid" id="nodesContainer">
-                <!-- Nodes will be loaded here -->
+                {% for node in nodes %}
+                <div class="node-card {{ node.status }}">
+                    <div class="node-header">
+                        <div class="node-title">
+                            <div class="node-id">{{ node.id }}</div>
+                            <div class="node-status {{ 'status-active' if node.status == 'active' else 'status-stopped' }}">
+                                {{ 'ACTIVE' if node.status == 'active' else 'STOPPED' }}
+                            </div>
+                        </div>
+                        <div style="color: #666; font-size: 14px;">
+                            {% if node.status == 'active' %}
+                                <i class="fas fa-circle fa-beat" style="color: #4CAF50;"></i>
+                            {% else %}
+                                <i class="fas fa-circle" style="color: #f44336;"></i>
+                            {% endif %}
+                            {{ 'Online' if node.status == 'active' else 'Offline' }}
+                        </div>
+                    </div>
+                    
+                    <div class="node-details">
+                        <div class="detail-item">
+                            <div class="detail-label">CPU Cores</div>
+                            <div class="detail-value">{{ node.cpu_cores }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Memory</div>
+                            <div class="detail-value">{{ node.memory_gb }} GB</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Transfers</div>
+                            <div class="detail-value">{{ node.transfers }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Bandwidth</div>
+                            <div class="detail-value">{{ node.bandwidth_mbps }} Mbps</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin: 15px 0;">
+                        <div style="display: flex; justify-content: space-between; font-size: 14px; color: #666;">
+                            <span>Storage Usage</span>
+                            {% set usage_percent = ((node.storage_used_mb / node.storage_total_mb) * 100)|round(1) %}
+                            <span>{{ usage_percent }}%</span>
+                        </div>
+                        <div class="storage-bar">
+                            <div class="storage-fill" data-width="{{ usage_percent }}"></div>
+                        </div>
+                        <div style="font-size: 12px; color: #666; text-align: center; margin-top: 5px;">
+                            {{ node.storage_used_mb|round(1) }} MB / {{ node.storage_total_mb }} MB
+                        </div>
+                    </div>
+                    
+                    <div class="node-actions">
+                        {% if node.status == 'active' %}
+                            <button class="action-btn stop-btn" onclick="stopNode('{{ node.id }}')">
+                                <i class="fas fa-stop"></i> Stop
+                            </button>
+                        {% else %}
+                            <button class="action-btn start-btn" onclick="startNode('{{ node.id }}')">
+                                <i class="fas fa-play"></i> Start
+                            </button>
+                        {% endif %}
+                        <button class="action-btn delete-btn" onclick="deleteNode('{{ node.id }}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
         </div>
         
@@ -520,6 +706,7 @@
         <div class="footer">
             <p>AgriPredict Distributed Cloud Storage v2.0</p>
             <p>Replication Factor: 2 (Each file stored on 2 nodes)</p>
+            <p>Logged in as Admin: {{ username }}</p>
         </div>
     </div>
     
@@ -588,10 +775,7 @@
                 
                 // Update stats
                 document.getElementById('activeNodes').textContent = data.stats.active_nodes;
-                document.getElementById('totalNodes').textContent = `of ${data.stats.total_nodes} total`;
                 document.getElementById('storageUsed').textContent = `${data.stats.storage_percent}%`;
-                document.getElementById('storageSize').textContent = 
-                    `${data.stats.storage_used_gb} GB / ${data.stats.storage_total_gb} GB`;
                 document.getElementById('activeTransfers').textContent = data.stats.total_transfers;
                 document.getElementById('totalFiles').textContent = data.stats.total_files;
                 document.getElementById('storagePercent').textContent = `${data.stats.storage_percent}% used`;
@@ -784,7 +968,15 @@
         
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            loadNodesData();
+            // Auto-hide flash messages after 5 seconds
+            setTimeout(() => {
+                const flashes = document.querySelectorAll('.flash');
+                flashes.forEach(flash => {
+                    flash.style.opacity = '0';
+                    flash.style.transform = 'translateX(100%)';
+                    setTimeout(() => flash.remove(), 300);
+                });
+            }, 5000);
             
             // Auto-refresh every 10 seconds
             setInterval(loadNodesData, 10000);
