@@ -55,7 +55,7 @@
     "id": "N5",
     "name": "Node 5",
     "status": "active",
-    "storage_used_mb": 0.0017674255371096237,
+    "storage_used_mb": 0.0017674255371087355,
     "storage_total_mb": 500,
     "cpu_cores": 6,
     "memory_gb": 11,
