@@ -350,9 +350,98 @@
             color: white;
         }
         
+        .view-files-btn {
+            background: #2196F3;
+            color: white;
+        }
+        
         .action-btn:hover {
             opacity: 0.9;
             transform: translateY(-2px);
+        }
+        
+        /* Files Modal */
+        .files-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .files-modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .files-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f5f5f5;
+        }
+        
+        .close-files-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .files-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            transition: background 0.2s ease;
+        }
+        
+        .file-item:hover {
+            background: #f9f9f9;
+        }
+        
+        .file-info {
+            flex: 1;
+        }
+        
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .file-details {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+        
+        .no-files {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
         }
         
         /* Footer */
@@ -681,6 +770,13 @@
                         <div style="font-size: 12px; color: #666; text-align: center; margin-top: 5px;">
                             {{ node.storage_used_mb|round(1) }} MB / {{ node.storage_total_mb }} MB
                         </div>
+                        
+                        <!-- NEW: View Files Button -->
+                        <button class="action-btn view-files-btn" 
+                                onclick="viewNodeFiles('{{ node.id }}')"
+                                style="width: 100%; margin-top: 10px;">
+                            <i class="fas fa-folder-open"></i> View Files ({{ node.files }})
+                        </button>
                     </div>
                     
                     <div class="node-actions">
@@ -707,6 +803,20 @@
             <p>AgriPredict Distributed Cloud Storage v2.0</p>
             <p>Replication Factor: 2 (Each file stored on 2 nodes)</p>
             <p>Logged in as Admin: {{ username }}</p>
+        </div>
+    </div>
+    
+    <!-- Files Modal -->
+    <div class="files-modal" id="filesModal">
+        <div class="files-modal-content">
+            <div class="files-modal-header">
+                <h2 style="color: #333;" id="filesModalTitle">Node Files</h2>
+                <button class="close-files-modal" onclick="closeFilesModal()">&times;</button>
+            </div>
+            
+            <div class="files-list" id="filesList">
+                <!-- Files will be loaded here -->
+            </div>
         </div>
     </div>
     
@@ -767,6 +877,60 @@
     </div>
     
     <script>
+        // View node files - FIXED VERSION
+        async function viewNodeFiles(nodeId) {
+            try {
+                const response = await fetch(`/admin/api/node-files/${nodeId}`);
+                const data = await response.json();
+                
+                const modal = document.getElementById('filesModal');
+                const title = document.getElementById('filesModalTitle');
+                const filesList = document.getElementById('filesList');
+                
+                title.textContent = `Files on Node ${nodeId}`;
+                
+                if (data.files.length === 0) {
+                    filesList.innerHTML = `
+                        <div class="no-files">
+                            <i class="fas fa-folder-open" style="font-size: 48px; margin-bottom: 20px; opacity: 0.5;"></i>
+                            <h3>No files stored</h3>
+                            <p>This node doesn't contain any files yet.</p>
+                        </div>
+                    `;
+                } else {
+                    let html = '';
+                    data.files.forEach(file => {
+                        html += `
+                            <div class="file-item">
+                                <div class="file-info">
+                                    <div class="file-name">${file.original_name}</div>
+                                    <div class="file-details">
+                                        <span>Size: ${file.size_mb} MB</span>
+                                        <span>Owner: ${file.owner}</span>
+                                        <span>Uploaded: ${file.upload_date}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <small>ID: ${file.id}</small>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    filesList.innerHTML = html;
+                }
+                
+                modal.style.display = 'flex';
+                
+            } catch (error) {
+                alert(`Error loading files: ${error.message}`);
+            }
+        }
+        
+        // Close files modal
+        function closeFilesModal() {
+            document.getElementById('filesModal').style.display = 'none';
+        }
+        
         // Load nodes data
         async function loadNodesData() {
             try {
@@ -836,6 +1000,12 @@
                             <div style="font-size: 12px; color: #666; text-align: center; margin-top: 5px;">
                                 ${node.storage_used_mb.toFixed(1)} MB / ${node.storage_total_mb} MB
                             </div>
+                            
+                            <button class="action-btn view-files-btn" 
+                                    onclick="viewNodeFiles('${node.id}')"
+                                    style="width: 100%; margin-top: 10px;">
+                                <i class="fas fa-folder-open"></i> View Files (${node.files})
+                            </button>
                         </div>
                         
                         <div class="node-actions">
@@ -965,30 +1135,3 @@
                 alert('Network error');
             }
         }
-        
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            // Auto-hide flash messages after 5 seconds
-            setTimeout(() => {
-                const flashes = document.querySelectorAll('.flash');
-                flashes.forEach(flash => {
-                    flash.style.opacity = '0';
-                    flash.style.transform = 'translateX(100%)';
-                    setTimeout(() => flash.remove(), 300);
-                });
-            }, 5000);
-            
-            // Auto-refresh every 10 seconds
-            setInterval(loadNodesData, 10000);
-        });
-        
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('addNodeModal');
-            if (event.target === modal) {
-                closeAddNodeModal();
-            }
-        };
-    </script>
-</body>
-</html>
