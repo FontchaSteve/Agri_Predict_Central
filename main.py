@@ -1,5 +1,5 @@
 """
-AgriPredict Cloud Storage - COMPLETE VERSION WITH SESSION FIXES
+AgriPredict Cloud Storage - COMPLETE VERSION WITH DOWNLOAD, DELETE, AND NODE FILES
 """
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash
 import os
@@ -328,6 +328,118 @@ def log_activity(user_id, action, ip_address):
     
     conn.commit()
     conn.close()
+
+# NEW FUNCTION: Delete file
+def delete_file_db(file_id, user_id):
+    """Delete a file from storage"""
+    try:
+        metadata_path = os.path.join('metadata', f'{file_id}.json')
+        
+        if not os.path.exists(metadata_path):
+            return {'error': 'File not found'}
+        
+        # Load metadata
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        # Check ownership
+        if metadata.get('user_id') != user_id:
+            # Admin can delete any file
+            user = get_user_by_id(user_id)
+            if not user or user['role'] != 'admin':
+                return {'error': 'Unauthorized'}
+        
+        # Remove file from all nodes
+        deleted_nodes = 0
+        for node_id in metadata['replicated_nodes']:
+            node_path = os.path.join(storage.base_path, node_id)
+            file_path = os.path.join(node_path, f"{file_id}_{metadata['filename']}")
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                deleted_nodes += 1
+            
+            # Update node storage
+            for node in node_manager.nodes:
+                if node['id'] == node_id:
+                    node['storage_used_mb'] -= metadata['size_mb']
+                    node['files'] -= 1
+                    break
+        
+        # Update user storage
+        update_user_storage(user_id, -metadata['size_gb'])
+        
+        # Remove metadata
+        os.remove(metadata_path)
+        
+        # Save updated nodes
+        node_manager.save_nodes(node_manager.nodes)
+        
+        # Log activity
+        log_activity(user_id, f'delete:{metadata["original_name"]}', request.remote_addr)
+        
+        return {
+            'success': True,
+            'filename': metadata['original_name'],
+            'deleted_from': deleted_nodes
+        }
+        
+    except Exception as e:
+        return {'error': f'Delete failed: {str(e)}'}
+
+# NEW FUNCTION: Get node files
+def get_node_files(node_id):
+    """Get list of files stored on a specific node"""
+    try:
+        node_path = os.path.join(storage.base_path, node_id)
+        if not os.path.exists(node_path):
+            return []
+        
+        files = []
+        # Read all files in the node directory
+        for filename in os.listdir(node_path):
+            file_path = os.path.join(node_path, filename)
+            if os.path.isfile(file_path):
+                # Extract file_id from filename (format: fileid_filename.ext)
+                parts = filename.split('_', 1)
+                if len(parts) >= 2:
+                    file_id = parts[0]
+                    stored_name = parts[1]
+                    
+                    # Try to get metadata for more info
+                    metadata_path = os.path.join('metadata', f'{file_id}.json')
+                    if os.path.exists(metadata_path):
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                        
+                        # Get owner username
+                        owner_id = metadata.get('user_id')
+                        owner = get_user_by_id(owner_id)
+                        owner_name = owner['username'] if owner else 'Unknown'
+                        
+                        file_info = {
+                            'id': file_id,
+                            'stored_name': stored_name,
+                            'original_name': metadata.get('original_name', stored_name),
+                            'size_mb': metadata.get('size_mb', round(os.path.getsize(file_path) / (1024*1024), 2)),
+                            'upload_date': metadata.get('upload_date', 'Unknown'),
+                            'owner': owner_name
+                        }
+                    else:
+                        file_info = {
+                            'id': file_id,
+                            'stored_name': stored_name,
+                            'original_name': stored_name,
+                            'size_mb': round(os.path.getsize(file_path) / (1024*1024), 2),
+                            'upload_date': 'Unknown',
+                            'owner': 'Unknown'
+                        }
+                    
+                    files.append(file_info)
+        
+        return files
+    except Exception as e:
+        print(f"Error getting node files: {e}")
+        return []
 
 # Authentication decorators
 def login_required(f):
@@ -793,7 +905,70 @@ def admin_dashboard():
         flash(f'Error loading admin dashboard: {str(e)}', 'error')
         return render_template('admin_dashboard.html', nodes=[], stats={}, username=session.get('username'))
 
-# NEW: API routes for admin dashboard (your template needs these!)
+# NEW ROUTES: Download, Delete, and Node Files
+@app.route('/delete/<file_id>', methods=['POST'])
+@login_required
+@otp_required
+def delete_file_route(file_id):
+    """Delete file route"""
+    result = delete_file_db(file_id, session['user_id'])
+    if 'error' in result:
+        return jsonify(result), 400
+    return jsonify(result), 200
+
+@app.route('/download/<file_id>')
+@login_required
+@otp_required
+def download_file(file_id):
+    """Download file - FIXED to actually download"""
+    try:
+        metadata_path = os.path.join('metadata', f'{file_id}.json')
+        
+        if not os.path.exists(metadata_path):
+            flash('File not found', 'error')
+            return redirect('/')
+        
+        # Load metadata
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+        
+        # Check ownership (admin can download any file)
+        user = get_user_by_id(session['user_id'])
+        if metadata.get('user_id') != session['user_id'] and user['role'] != 'admin':
+            flash('Unauthorized to download this file', 'error')
+            return redirect('/')
+        
+        # Find first available node with the file
+        for node_id in metadata['replicated_nodes']:
+            node_path = os.path.join(storage.base_path, node_id)
+            file_path = os.path.join(node_path, f"{file_id}_{metadata['filename']}")
+            
+            if os.path.exists(file_path):
+                # Log download activity
+                log_activity(session['user_id'], f'download:{metadata["original_name"]}', request.remote_addr)
+                
+                # Send file for download - THIS IS THE FIXED PART
+                return send_file(
+                    file_path,
+                    as_attachment=True,
+                    download_name=metadata['original_name']
+                )
+        
+        flash('File not found on any storage node', 'error')
+        return redirect('/')
+        
+    except Exception as e:
+        flash(f'Download failed: {str(e)}', 'error')
+        return redirect('/')
+
+@app.route('/admin/api/node-files/<node_id>')
+@admin_required
+def get_node_files_route(node_id):
+    """Get files stored on a specific node"""
+    files = get_node_files(node_id)
+    return jsonify({'files': files})
+
+# API routes for admin dashboard
 @app.route('/api/nodes')
 @admin_required
 def api_nodes():
@@ -921,6 +1096,9 @@ if __name__ == '__main__':
     print("✅ All features enabled")
     print("✅ Email OTP integrated")
     print("✅ Admin dashboard API routes added")
+    print("✅ File download feature added")
+    print("✅ File delete feature added")
+    print("✅ Node files viewing added")
     print("=" * 60)
     print(f"📊 Admin Login: username='admin', password='password1234'")
     print(f"🔐 Login: http://localhost:5000/login")
