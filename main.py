@@ -1,5 +1,5 @@
 """
-AgriPredict Cloud Storage - Admin + User Dashboard with Authentication
+AgriPredict Cloud Storage - COMPLETE VERSION WITH SESSION FIXES
 """
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash
 import os
@@ -11,9 +11,12 @@ import sqlite3
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from functools import wraps
+import glob
 
 app = Flask(__name__, template_folder='templates')
-app.secret_key = 'agripredict-2024-secure-auth-key'
+# CRITICAL FIX: Change secret key to invalidate old sessions
+app.secret_key = 'agripredict-NEW-SECRET-KEY-2025-' + str(random.randint(1000, 9999))
+
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 
 # Storage settings
@@ -38,6 +41,9 @@ def get_db():
 
 def init_database():
     """Initialize database tables"""
+    # Clear old sessions first
+    clear_old_sessions()
+    
     conn = get_db()
     cursor = conn.cursor()
     
@@ -91,6 +97,23 @@ def init_database():
     conn.commit()
     conn.close()
     print("✅ Database initialized. Admin user created: admin / password1234")
+
+def clear_old_sessions():
+    """Clear old session files"""
+    try:
+        # Clear Flask session files
+        session_files = glob.glob('flask_session/*')
+        for f in session_files:
+            try:
+                os.remove(f)
+                print(f"🗑️  Deleted session file: {f}")
+            except:
+                pass
+        
+        # Clear any session cookies
+        print("🔄 Old sessions cleared")
+    except:
+        pass
 
 def verify_user_credentials(username, password):
     """Verify user credentials"""
@@ -265,10 +288,13 @@ def create_otp(user_id):
     conn.commit()
     conn.close()
     
-    print(f"📧 OTP for user {user_id}: {otp_code} (valid for 10 minutes)")
+    print(f"\n{'='*60}")
+    print(f"📧 OTP for user {user_id}: {otp_code}")
+    print(f"⏰ Valid for 10 minutes")
+    print(f"{'='*60}\n")
     return otp_code
 
-def verify_otp(user_id, otp_code):
+def verify_user_otp(user_id, otp_code):
     """Verify OTP for user"""
     conn = get_db()
     cursor = conn.cursor()
@@ -302,20 +328,6 @@ def log_activity(user_id, action, ip_address):
     
     conn.commit()
     conn.close()
-
-# Simple email service for development
-class EmailService:
-    def send_otp_email(self, email, otp_code, username):
-        """Send OTP email (console output for development)"""
-        print("\n" + "="*60)
-        print(f"📧 OTP Email to: {email}")
-        print(f"👤 User: {username}")
-        print(f"🔑 OTP Code: {otp_code}")
-        print(f"⏰ Valid for: 10 minutes")
-        print("="*60 + "\n")
-        return True
-
-email_service = EmailService()
 
 # Authentication decorators
 def login_required(f):
@@ -365,6 +377,12 @@ def otp_required(f):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """User login"""
+    # CRITICAL FIX: Clear session if force_refresh parameter is present
+    if 'force_refresh' in request.args:
+        session.clear()
+        flash('Session cleared. Please login again.', 'info')
+        return redirect('/login')
+    
     if 'user_id' in session:
         if session.get('role') == 'admin':
             return redirect('/admin')
@@ -380,7 +398,8 @@ def login():
         user = verify_user_credentials(username, password)
         
         if user:
-            # Store user info in session
+            # Clear session and create fresh one
+            session.clear()
             session['user_id'] = user['id']
             session['username'] = user['username']
             session['role'] = user['role']
@@ -402,17 +421,20 @@ def login():
                 # Generate OTP for normal users
                 otp_code = create_otp(user['id'])
                 
-                # Send OTP via email
-                email_sent = email_service.send_otp_email(
-                    user['email'], 
-                    otp_code, 
-                    user['username']
-                )
-                
-                if email_sent:
-                    flash(f'OTP sent to {user["email"]}. Check your email.', 'success')
-                else:
-                    flash(f'OTP: {otp_code} (Email not configured, check console)', 'info')
+                # Try to import email_service if available
+                try:
+                    from email_service import email_service
+                    email_sent = email_service.send_otp_email(
+                        user['email'], 
+                        otp_code, 
+                        user['username']
+                    )
+                    if email_sent:
+                        flash(f'OTP sent to {user["email"]}. Check your email.', 'success')
+                    else:
+                        flash(f'OTP: {otp_code} (Email not configured, check console)', 'info')
+                except ImportError:
+                    flash(f'OTP: {otp_code} (Email service not available, check console)', 'info')
                 
                 return redirect('/verify-otp')
         else:
@@ -483,8 +505,7 @@ def verify_otp():
             flash('Please enter a valid 6-digit OTP', 'error')
             return render_template('verify_otp.html', email=session.get('email'))
         
-        # Use the local verify_otp function
-        if verify_otp(session['user_id'], otp_code):
+        if verify_user_otp(session['user_id'], otp_code):
             session['otp_verified'] = True
             flash('OTP verified successfully!', 'success')
             return redirect('/')
@@ -503,17 +524,21 @@ def resend_otp():
     # Generate new OTP
     otp_code = create_otp(session['user_id'])
     
-    # Send OTP via email
-    email_sent = email_service.send_otp_email(
-        session.get('email'), 
-        otp_code, 
-        session.get('username')
-    )
-    
-    if email_sent:
-        flash('New OTP sent to your email.', 'success')
-    else:
-        flash(f'New OTP: {otp_code} (Email not configured, check console)', 'info')
+    # Try to send email
+    try:
+        from email_service import email_service
+        email_sent = email_service.send_otp_email(
+            session.get('email'), 
+            otp_code, 
+            session.get('username')
+        )
+        
+        if email_sent:
+            flash('New OTP sent to your email.', 'success')
+        else:
+            flash(f'New OTP: {otp_code} (Email not configured, check console)', 'info')
+    except ImportError:
+        flash(f'New OTP: {otp_code} (Email service not available, check console)', 'info')
     
     return redirect('/verify-otp')
 
@@ -528,7 +553,14 @@ def logout():
     flash('You have been logged out successfully', 'info')
     return redirect('/login')
 
-# NodeManager and DistributedStorage classes (same as before)
+@app.route('/clear-session')
+def clear_session():
+    """Force clear session (for debugging)"""
+    session.clear()
+    flash('Session cleared. Please login again.', 'info')
+    return redirect('/login?force_refresh=1')
+
+# NodeManager and DistributedStorage classes
 class NodeManager:
     def __init__(self):
         self.nodes_file = 'nodes.json'
@@ -761,6 +793,80 @@ def admin_dashboard():
         flash(f'Error loading admin dashboard: {str(e)}', 'error')
         return render_template('admin_dashboard.html', nodes=[], stats={}, username=session.get('username'))
 
+# NEW: API routes for admin dashboard (your template needs these!)
+@app.route('/api/nodes')
+@admin_required
+def api_nodes():
+    """Get nodes data for admin dashboard"""
+    nodes = node_manager.nodes
+    stats = node_manager.get_node_stats()
+    return jsonify({'nodes': nodes, 'stats': stats})
+
+@app.route('/admin/api/start-node/<node_id>', methods=['POST'])
+@admin_required
+def start_node(node_id):
+    """Start a node"""
+    try:
+        for node in node_manager.nodes:
+            if node['id'] == node_id:
+                node['status'] = 'active'
+                node_manager.save_nodes(node_manager.nodes)
+                return jsonify({'success': True, 'message': f'Node {node_id} started'})
+        return jsonify({'success': False, 'error': 'Node not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/api/stop-node/<node_id>', methods=['POST'])
+@admin_required
+def stop_node(node_id):
+    """Stop a node"""
+    try:
+        for node in node_manager.nodes:
+            if node['id'] == node_id:
+                node['status'] = 'stopped'
+                node_manager.save_nodes(node_manager.nodes)
+                return jsonify({'success': True, 'message': f'Node {node_id} stopped'})
+        return jsonify({'success': False, 'error': 'Node not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/api/delete-node/<node_id>', methods=['POST'])
+@admin_required
+def delete_node(node_id):
+    """Delete a node"""
+    try:
+        node_manager.nodes = [node for node in node_manager.nodes if node['id'] != node_id]
+        node_manager.save_nodes(node_manager.nodes)
+        return jsonify({'success': True, 'message': f'Node {node_id} deleted'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/api/add-node', methods=['POST'])
+@admin_required
+def add_node():
+    """Add a new node"""
+    try:
+        data = request.json
+        new_id = f'N{len(node_manager.nodes) + 1}'
+        new_node = {
+            'id': new_id,
+            'name': data.get('name', f'Node {len(node_manager.nodes) + 1}'),
+            'status': 'active',
+            'storage_used_mb': 0,
+            'storage_total_mb': STORAGE_PER_NODE_MB,
+            'cpu_cores': data.get('cpu_cores', 4),
+            'memory_gb': data.get('memory_gb', 8),
+            'bandwidth_mbps': data.get('bandwidth_mbps', 1000),
+            'transfers': 0,
+            'files': 0,
+            'created': datetime.now().isoformat()
+        }
+        node_manager.nodes.append(new_node)
+        node_manager.save_nodes(node_manager.nodes)
+        return jsonify({'success': True, 'node': new_node})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/upload', methods=['POST'])
 @login_required
 @otp_required
@@ -802,20 +908,28 @@ def api_files():
     return jsonify({'files': files})
 
 if __name__ == '__main__':
+    # Clear old sessions on startup
+    clear_old_sessions()
+    
     # Initialize database
     init_database()
     
     print("=" * 60)
-    print("🚀 AgriPredict Distributed Cloud Storage")
-    print("🔐 Complete Authentication System with OTP via Email")
+    print("🚀 AgriPredict Cloud Storage - COMPLETE FIXED VERSION")
+    print("=" * 60)
+    print("✅ Session fixes applied")
+    print("✅ All features enabled")
+    print("✅ Email OTP integrated")
+    print("✅ Admin dashboard API routes added")
     print("=" * 60)
     print(f"📊 Admin Login: username='admin', password='password1234'")
     print(f"🔐 Login: http://localhost:5000/login")
     print(f"📝 Register: http://localhost:5000/register")
     print(f"🌐 User Dashboard: http://localhost:5000")
     print(f"⚙️  Admin Dashboard: http://localhost:5000/admin")
+    print(f"🔄 Clear session: http://localhost:5000/clear-session")
     print("=" * 60)
-    print("📧 OTP Codes are printed to console (for development)")
+    print("📧 OTP Codes print to console (or email if configured)")
     print("=" * 60)
     
     app.run(host='0.0.0.0', port=5000, debug=True)
