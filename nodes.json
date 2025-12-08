@@ -2,7 +2,7 @@
   {
     "id": "N1",
     "name": "Node 1",
-    "status": "stopped",
+    "status": "active",
     "storage_used_mb": 0.0008837127685545898,
     "storage_total_mb": 500,
     "cpu_cores": 4,
@@ -15,7 +15,7 @@
   {
     "id": "N2",
     "name": "Node 2",
-    "status": "stopped",
+    "status": "active",
     "storage_used_mb": 0.0007902908325194691,
     "storage_total_mb": 500,
     "cpu_cores": 8,
@@ -54,7 +54,7 @@
   {
     "id": "N5",
     "name": "Node 5",
-    "status": "stopped",
+    "status": "active",
     "storage_used_mb": 6.801767425537109,
     "storage_total_mb": 500,
     "cpu_cores": 6,
