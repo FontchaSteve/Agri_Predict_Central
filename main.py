@@ -1,5 +1,6 @@
 """
 AgriPredict Cloud Storage - COMPLETE VERSION WITH DOWNLOAD, DELETE, AND NODE FILES
+UPDATED: gRPC integration for auth routes
 """
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session, flash
 import os
@@ -12,6 +13,68 @@ from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from functools import wraps
 import glob
+
+# NEW: gRPC imports
+import grpc
+import auth_pb2
+import auth_pb2_grpc
+
+# NEW: gRPC channel (connect to server) - Create once, reuse
+GRPC_CHANNEL = None
+GRPC_STUB = None
+
+def init_grpc():
+    """Initialize gRPC connection (called on startup)"""
+    global GRPC_CHANNEL, GRPC_STUB
+    if GRPC_CHANNEL is None:
+        GRPC_CHANNEL = grpc.insecure_channel('localhost:50051')
+        GRPC_STUB = auth_pb2_grpc.AuthServiceStub(GRPC_CHANNEL)
+        print("✅ gRPC channel initialized")
+
+# NEW: gRPC-based auth functions (with error handling)
+def grpc_register(username, email, password):
+    try:
+        request = auth_pb2.RegisterRequest(username=username, email=email, password=password)
+        return GRPC_STUB.RegisterUser(request)
+    except grpc.RpcError as e:
+        print(f"gRPC Register error: {e}")
+        return auth_pb2.RegisterResponse(success=False, message=f"gRPC error: {str(e.code())} - {e.details()}")
+    except Exception as e:
+        print(f"Unexpected gRPC Register error: {e}")
+        return auth_pb2.RegisterResponse(success=False, message="Auth service unavailable")
+
+def grpc_login(username, password):
+    try:
+        request = auth_pb2.LoginRequest(username=username, password=password)
+        return GRPC_STUB.Login(request)
+    except grpc.RpcError as e:
+        print(f"gRPC Login error: {e}")
+        return auth_pb2.LoginResponse(success=False, message=f"gRPC error: {str(e.code())} - {e.details()}")
+    except Exception as e:
+        print(f"Unexpected gRPC Login error: {e}")
+        return auth_pb2.LoginResponse(success=False, message="Auth service unavailable")
+
+def grpc_verify_otp(user_id, otp_code):
+    try:
+        request = auth_pb2.VerifyOTPRequest(user_id=user_id, otp_code=otp_code)
+        return GRPC_STUB.VerifyOTP(request)
+    except grpc.RpcError as e:
+        print(f"gRPC VerifyOTP error: {e}")
+        return auth_pb2.VerifyOTPResponse(success=False, message=f"gRPC error: {str(e.code())} - {e.details()}")
+    except Exception as e:
+        print(f"Unexpected gRPC VerifyOTP error: {e}")
+        return auth_pb2.VerifyOTPResponse(success=False, message="Auth service unavailable")
+
+def grpc_generate_otp(user_id):
+    try:
+        request = auth_pb2.GenerateOTPRequest(user_id=user_id)
+        return GRPC_STUB.GenerateOTP(request)
+    except grpc.RpcError as e:
+        print(f"gRPC GenerateOTP error: {e}")
+        return auth_pb2.GenerateOTPResponse(otp_code="", sent=False)
+    except Exception as e:
+        print(f"Unexpected gRPC GenerateOTP error: {e}")
+        return auth_pb2.GenerateOTPResponse(otp_code="", sent=False)
 
 app = Flask(__name__, template_folder='templates')
 # CRITICAL FIX: Change secret key to invalidate old sessions
@@ -47,7 +110,7 @@ def init_database():
     conn = get_db()
     cursor = conn.cursor()
     
-    # Create users table
+    # Create users table (KEEP for compatibility, but writes via gRPC)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,7 +125,7 @@ def init_database():
         )
     ''')
     
-    # Create OTP table
+    # Create OTP table (KEEP, but managed via gRPC)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS otp_codes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,7 +150,8 @@ def init_database():
         )
     ''')
     
-    # Create default admin user if not exists
+    # Create default admin user if not exists (KEEP local for bootstrap)
+    # Note: If gRPC server runs first, it can init too
     admin_password_hash = hashlib.sha256('password1234'.encode()).hexdigest()
     cursor.execute('''
         INSERT OR IGNORE INTO users (username, email, password_hash, role, storage_total_gb) 
@@ -115,54 +179,7 @@ def clear_old_sessions():
     except:
         pass
 
-def verify_user_credentials(username, password):
-    """Verify user credentials"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
-    
-    cursor.execute('''
-        SELECT id, username, email, role, storage_total_gb, storage_used_gb 
-        FROM users 
-        WHERE username = ? AND password_hash = ?
-    ''', (username, password_hash))
-    
-    user = cursor.fetchone()
-    conn.close()
-    
-    if user:
-        return {
-            'id': user[0],
-            'username': user[1],
-            'email': user[2],
-            'role': user[3],
-            'storage_total_gb': user[4],
-            'storage_used_gb': user[5]
-        }
-    return None
-
-def create_user(username, email, password, role='user'):
-    """Create new user"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    try:
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        
-        cursor.execute('''
-            INSERT INTO users (username, email, password_hash, role, storage_total_gb, storage_used_gb)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (username, email, password_hash, role, 2.5, 0))
-        
-        user_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return user_id
-    except sqlite3.IntegrityError:
-        conn.close()
-        return None
-
+# Keep for non-auth (storage, etc.)
 def get_user_by_id(user_id):
     """Get user by ID"""
     conn = get_db()
@@ -187,43 +204,6 @@ def get_user_by_id(user_id):
             'storage_used_gb': user[5]
         }
     return None
-
-def get_user_by_username(username):
-    """Get user by username"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT id, username, email, role 
-        FROM users 
-        WHERE username = ?
-    ''', (username,))
-    
-    user = cursor.fetchone()
-    conn.close()
-    
-    if user:
-        return {
-            'id': user[0],
-            'username': user[1],
-            'email': user[2],
-            'role': user[3]
-        }
-    return None
-
-def update_last_login(user_id):
-    """Update user's last login time"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        UPDATE users 
-        SET last_login = datetime('now') 
-        WHERE id = ?
-    ''', (user_id,))
-    
-    conn.commit()
-    conn.close()
 
 def get_user_storage_info(user_id):
     """Get user storage information"""
@@ -266,55 +246,6 @@ def update_user_storage(user_id, size_gb):
     
     conn.commit()
     conn.close()
-
-def create_otp(user_id):
-    """Create OTP for user"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # Clear old OTPs
-    cursor.execute('DELETE FROM otp_codes WHERE user_id = ? OR expires_at < datetime("now")', (user_id,))
-    
-    # Generate 6-digit OTP
-    otp_code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
-    expires_at = (datetime.now() + timedelta(minutes=10)).isoformat()
-    
-    # Store OTP
-    cursor.execute('''
-        INSERT INTO otp_codes (user_id, otp_code, expires_at)
-        VALUES (?, ?, ?)
-    ''', (user_id, otp_code, expires_at))
-    
-    conn.commit()
-    conn.close()
-    
-    print(f"\n{'='*60}")
-    print(f"📧 OTP for user {user_id}: {otp_code}")
-    print(f"⏰ Valid for 10 minutes")
-    print(f"{'='*60}\n")
-    return otp_code
-
-def verify_user_otp(user_id, otp_code):
-    """Verify OTP for user"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        SELECT id FROM otp_codes 
-        WHERE user_id = ? AND otp_code = ? AND used = 0 AND expires_at > datetime('now')
-    ''', (user_id, otp_code))
-    
-    otp = cursor.fetchone()
-    
-    if otp:
-        # Mark OTP as used
-        cursor.execute('UPDATE otp_codes SET used = 1 WHERE id = ?', (otp[0],))
-        conn.commit()
-        conn.close()
-        return True
-    
-    conn.close()
-    return False
 
 def log_activity(user_id, action, ip_address):
     """Log user activity"""
@@ -485,7 +416,7 @@ def otp_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Authentication routes
+# Authentication routes: Updated to gRPC
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """User login"""
@@ -507,50 +438,50 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        user = verify_user_credentials(username, password)
+        # NEW: Call gRPC for login
+        response = grpc_login(username, password)
         
-        if user:
+        if response.success:
             # Clear session and create fresh one
             session.clear()
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['role'] = user['role']
-            session['email'] = user['email']
-            
-            # Update last login
-            update_last_login(user['id'])
-            
-            # Log activity
-            log_activity(user['id'], 'login', request.remote_addr)
+            session['user_id'] = response.user_id
+            session['username'] = response.username
+            session['role'] = response.role
+            session['email'] = response.email
             
             # Role-based handling
-            if user['role'] == 'admin':
-                # Admin doesn't need OTP
+            if response.is_admin or not response.needs_otp:
                 session['otp_verified'] = True
-                flash('Welcome back, Admin!', 'success')
-                return redirect('/admin')
+                if response.role == 'admin':
+                    flash('Welcome back, Admin!', 'success')
+                    return redirect('/admin')
+                else:
+                    flash('Login successful!', 'success')
+                    return redirect('/')
             else:
-                # Generate OTP for normal users
-                otp_code = create_otp(user['id'])
+                # Generate OTP for normal users (already done in gRPC)
+                # If console fallback, print OTP here
+                if response.otp_code:
+                    print(f"📧 OTP for {username}: {response.otp_code}")
                 
                 # Try to import email_service if available
                 try:
                     from email_service import email_service
                     email_sent = email_service.send_otp_email(
-                        user['email'], 
-                        otp_code, 
-                        user['username']
+                        response.email, 
+                        response.otp_code, 
+                        response.username
                     )
                     if email_sent:
-                        flash(f'OTP sent to {user["email"]}. Check your email.', 'success')
+                        flash(f'OTP sent to {response.email}. Check your email.', 'success')
                     else:
-                        flash(f'OTP: {otp_code} (Email not configured, check console)', 'info')
+                        flash(f'OTP: {response.otp_code} (Email not configured, check console)', 'info')
                 except ImportError:
-                    flash(f'OTP: {otp_code} (Email service not available, check console)', 'info')
+                    flash(f'OTP: {response.otp_code} (Email service not available, check console)', 'info')
                 
                 return redirect('/verify-otp')
         else:
-            flash('Invalid username or password', 'error')
+            flash(response.message, 'error')
     
     return render_template('login.html')
 
@@ -583,20 +514,14 @@ def register():
                 flash(error, 'error')
             return render_template('register.html')
         
-        # Check if user exists
-        existing_user = get_user_by_username(username)
-        if existing_user:
-            flash('Username already exists', 'error')
-            return render_template('register.html')
+        # NEW: Call gRPC for register
+        response = grpc_register(username, email, password)
         
-        # Create user
-        user_id = create_user(username, email, password, role='user')
-        
-        if user_id:
+        if response.success:
             flash('Registration successful! Please login.', 'success')
             return redirect('/login')
         else:
-            flash('Registration failed. Username or email may already exist.', 'error')
+            flash(response.message, 'error')
     
     return render_template('register.html')
 
@@ -617,12 +542,15 @@ def verify_otp():
             flash('Please enter a valid 6-digit OTP', 'error')
             return render_template('verify_otp.html', email=session.get('email'))
         
-        if verify_user_otp(session['user_id'], otp_code):
+        # NEW: Call gRPC for verify
+        response = grpc_verify_otp(session['user_id'], otp_code)
+        
+        if response.success:
             session['otp_verified'] = True
             flash('OTP verified successfully!', 'success')
             return redirect('/')
         else:
-            flash('Invalid or expired OTP code', 'error')
+            flash(response.message, 'error')
     
     return render_template('verify_otp.html', email=session.get('email'))
 
@@ -633,24 +561,24 @@ def resend_otp():
     if session.get('role') == 'admin' or session.get('otp_verified'):
         return redirect('/')
     
-    # Generate new OTP
-    otp_code = create_otp(session['user_id'])
+    # NEW: Call gRPC for resend
+    response = grpc_generate_otp(session['user_id'])
     
     # Try to send email
     try:
         from email_service import email_service
         email_sent = email_service.send_otp_email(
             session.get('email'), 
-            otp_code, 
+            response.otp_code, 
             session.get('username')
         )
         
         if email_sent:
             flash('New OTP sent to your email.', 'success')
         else:
-            flash(f'New OTP: {otp_code} (Email not configured, check console)', 'info')
+            flash(f'New OTP: {response.otp_code} (Email not configured, check console)', 'info')
     except ImportError:
-        flash(f'New OTP: {otp_code} (Email service not available, check console)', 'info')
+        flash(f'New OTP: {response.otp_code} (Email service not available, check console)', 'info')
     
     return redirect('/verify-otp')
 
@@ -1082,16 +1010,27 @@ def api_files():
     files = storage.get_user_files(session['user_id'])
     return jsonify({'files': files})
 
+# NEW: Proper shutdown - Close channel only on app exit
+def shutdown_grpc():
+    global GRPC_CHANNEL
+    if GRPC_CHANNEL:
+        GRPC_CHANNEL.close()
+        print("🔌 gRPC channel closed")
+
 if __name__ == '__main__':
     # Clear old sessions on startup
     clear_old_sessions()
     
-    # Initialize database
+    # Initialize database (for local tables)
     init_database()
     
+    # NEW: Init gRPC
+    init_grpc()
+    
     print("=" * 60)
-    print("🚀 AgriPredict Cloud Storage - COMPLETE FIXED VERSION")
+    print("🚀 AgriPredict Cloud Storage - gRPC AUTH INTEGRATED")
     print("=" * 60)
+    print("✅ gRPC Server must run first: python auth_server.py")
     print("✅ Session fixes applied")
     print("✅ All features enabled")
     print("✅ Email OTP integrated")
@@ -1110,4 +1049,7 @@ if __name__ == '__main__':
     print("📧 OTP Codes print to console (or email if configured)")
     print("=" * 60)
     
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=True)
+    finally:
+        shutdown_grpc()  # Close on exit
