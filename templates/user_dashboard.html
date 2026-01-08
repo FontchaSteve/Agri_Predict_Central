@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgriPredict Cloud Storage</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* Header */
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo i {
+            font-size: 32px;
+            color: #667eea;
+        }
+        
+        .logo-content {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .logo-content h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .user-info {
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .user-info span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .logout-btn {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .admin-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+        
+        /* Storage Card */
+        .storage-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        
+        .storage-title {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        
+        .storage-size {
+            font-size: 42px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 20px;
+        }
+        
+        .progress-container {
+            background: #e0e0e0;
+            height: 12px;
+            border-radius: 6px;
+            margin: 25px 0;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+        
+        .storage-details {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        
+        .detail-item {
+            text-align: center;
+        }
+        
+        .detail-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .detail-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        /* Upload Section */
+        .upload-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 40px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            border: 2px dashed #ddd;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-section:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .upload-icon {
+            font-size: 48px;
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+        
+        .upload-text h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        .upload-text p {
+            color: #666;
+            margin-bottom: 25px;
+        }
+        
+        .upload-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        /* Files Section */
+        .files-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        
+        .section-title {
+            font-size: 22px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .files-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        
+        .file-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #eee;
+            transition: all 0.3s ease;
+        }
+        
+        .file-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .file-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .file-name {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .file-details {
+            display: flex;
+            justify-content: space-between;
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .file-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .action-btn {
+            flex: 1;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            text-decoration: none;
+        }
+        
+        .download-btn {
+            background: #667eea;
+            color: white;
+        }
+        
+        .delete-btn {
+            background: #f8f9fa;
+            color: #666;
+            border: 1px solid #ddd;
+        }
+        
+        /* Message Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transform: translateX(150%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+        }
+        
+        .toast.success {
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .toast.error {
+            border-left: 4px solid #f44336;
+        }
+        
+        /* Hidden file input */
+        #fileInput {
+            display: none;
+        }
+        
+        /* Flash Messages */
+        .flash-messages {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+        
+        .flash {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            max-width: 300px;
+        }
+        
+        .flash.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .flash.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .flash.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-cloud"></i>
+                <div class="logo-content">
+                    <h1>AgriPredict Cloud Storage</h1>
+                    <div class="user-info">
+                        <span>
+                            <i class="fas fa-user"></i>
+                            {{ username }}
+                        </span>
+                        <a href="/logout" class="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <a href="/admin" class="admin-btn">
+                <i class="fas fa-cog"></i> Admin Panel
+            </a>
+        </div>
+        
+        <!-- Flash Messages -->
+        <div class="flash-messages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">
+                            {% if category == 'success' %}
+                                <i class="fas fa-check-circle"></i>
+                            {% elif category == 'error' %}
+                                <i class="fas fa-exclamation-circle"></i>
+                            {% else %}
+                                <i class="fas fa-info-circle"></i>
+                            {% endif %}
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
+        <!-- Storage Overview -->
+        <div class="storage-card">
+            <div class="storage-title">Your Cloud Storage</div>
+            <div class="storage-size" id="storageSize">0 GB / {{ storage.total_gb }} GB</div>
+            
+            <div class="progress-container">
+                <div class="progress-bar" id="progressBar" data-width="{{ storage.percent_used }}"></div>
+            </div>
+            
+            <div class="storage-details">
+                <div class="detail-item">
+                    <div class="detail-value" id="usedStorage">{{ storage.used_gb }} GB</div>
+                    <div class="detail-label">Used</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-value" id="availableStorage">{{ storage.available_gb }} GB</div>
+                    <div class="detail-label">Available</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-value" id="totalFiles">{{ total_files }}</div>
+                    <div class="detail-label">Files</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Upload Section -->
+        <div class="upload-section" onclick="document.getElementById('fileInput').click()">
+            <input type="file" id="fileInput" onchange="uploadFile()">
+            <div class="upload-icon">
+                <i class="fas fa-cloud-upload-alt"></i>
+            </div>
+            <div class="upload-text">
+                <h3>Upload Your Files</h3>
+                <p>Drag & drop or click to browse • Max 500MB per file</p>
+                <button class="upload-btn">
+                    <i class="fas fa-plus"></i> Select Files
+                </button>
+            </div>
+        </div>
+        
+        <!-- Files Section -->
+        <div class="files-section">
+            <div class="section-header">
+                <div class="section-title">
+                    <i class="fas fa-folder"></i> Your Files
+                </div>
+                <div style="color: #666; font-size: 14px;">
+                    <span id="fileCount">{{ total_files }}</span> files
+                </div>
+            </div>
+            
+            <div id="filesContainer">
+                {% if files %}
+                    <div class="files-grid">
+                        {% for file in files %}
+                        <div class="file-card">
+                            <div class="file-icon">
+                                {% set ext = file.name.split('.')[-1].lower() %}
+                                {% if ext in ['jpg', 'jpeg', 'png', 'gif', 'bmp'] %}
+                                    <i class="fas fa-file-image"></i>
+                                {% elif ext in ['pdf'] %}
+                                    <i class="fas fa-file-pdf"></i>
+                                {% elif ext in ['doc', 'docx'] %}
+                                    <i class="fas fa-file-word"></i>
+                                {% elif ext in ['xls', 'xlsx'] %}
+                                    <i class="fas fa-file-excel"></i>
+                                {% elif ext in ['ppt', 'pptx'] %}
+                                    <i class="fas fa-file-powerpoint"></i>
+                                {% elif ext in ['zip', 'rar', '7z'] %}
+                                    <i class="fas fa-file-archive"></i>
+                                {% elif ext in ['txt', 'csv', 'json'] %}
+                                    <i class="fas fa-file-alt"></i>
+                                {% else %}
+                                    <i class="fas fa-file"></i>
+                                {% endif %}
+                            </div>
+                            <div class="file-name" title="{{ file.original_name }}">
+                                {{ file.original_name }}
+                            </div>
+                            <div class="file-details">
+                                <span>{{ file.size_mb }} MB</span>
+                                <span>{{ file.upload_date[:10] }}</span>
+                            </div>
+                            <div class="file-actions">
+                                <a href="/download/{{ file.id }}" class="action-btn download-btn">
+                                    <i class="fas fa-download"></i> Download
+                                </a>
+                                <button class="action-btn delete-btn" onclick="deleteFile('{{ file.id }}')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div style="text-align: center; padding: 40px; color: #666;">
+                        <i class="fas fa-folder-open" style="font-size: 48px; margin-bottom: 20px; opacity: 0.5;"></i>
+                        <h3>No files yet</h3>
+                        <p>Upload your first file to get started</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <i class="fas" id="toastIcon"></i>
+        <div>
+            <div id="toastTitle" style="font-weight: 600;"></div>
+            <div id="toastMessage" style="font-size: 14px; color: #666;"></div>
+        </div>
+    </div>
+    
+    <script>
+        // Show toast notification
+        function showToast(type, title, message, duration = 3000) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const toastTitle = document.getElementById('toastTitle');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            if (type === 'success') {
+                icon.className = 'fas fa-check-circle';
+                toast.className = 'toast success';
+            } else {
+                icon.className = 'fas fa-exclamation-circle';
+                toast.className = 'toast error';
+            }
+            
+            toastTitle.textContent = title;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            
+            setTimeout(() => toast.classList.remove('show'), duration);
+        }
+        
+        // Load storage info
+        async function loadStorageInfo() {
+            try {
+                const response = await fetch('/api/storage');
+                const data = await response.json();
+                
+                document.getElementById('storageSize').textContent = 
+                    `${data.used_gb} GB / ${data.total_gb} GB`;
+                
+                document.getElementById('usedStorage').textContent = 
+                    `${data.used_gb} GB`;
+                
+                document.getElementById('availableStorage').textContent = 
+                    `${data.available_gb} GB`;
+                
+                document.getElementById('progressBar').style.width = 
+                    `${data.percent_used}%`;
+                
+                document.getElementById('totalFiles').textContent = 
+                    data.files || 0;
+                
+            } catch (error) {
+                console.error('Error loading storage:', error);
+            }
+        }
+        
+        // Load files
+        async function loadFiles() {
+            try {
+                const response = await fetch('/api/files');
+                const data = await response.json();
+                
+                const container = document.getElementById('filesContainer');
+                const fileCount = document.getElementById('fileCount');
+                
+                fileCount.textContent = data.files.length;
+                
+                if (data.files.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; padding: 40px; color: #666;">
+                            <i class="fas fa-folder-open" style="font-size: 48px; margin-bottom: 20px; opacity: 0.5;"></i>
+                            <h3>No files yet</h3>
+                            <p>Upload your first file to get started</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '<div class="files-grid">';
+                
+                data.files.forEach(file => {
+                    const date = new Date(file.upload_date).toLocaleDateString();
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    let icon = 'fa-file';
+                    
+                    if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(ext)) icon = 'fa-file-image';
+                    else if (['pdf'].includes(ext)) icon = 'fa-file-pdf';
+                    else if (['doc', 'docx'].includes(ext)) icon = 'fa-file-word';
+                    else if (['xls', 'xlsx'].includes(ext)) icon = 'fa-file-excel';
+                    else if (['ppt', 'pptx'].includes(ext)) icon = 'fa-file-powerpoint';
+                    else if (['zip', 'rar', '7z'].includes(ext)) icon = 'fa-file-archive';
+                    else if (['txt', 'csv', 'json'].includes(ext)) icon = 'fa-file-alt';
+                    
+                    html += `
+                        <div class="file-card">
+                            <div class="file-icon">
+                                <i class="fas ${icon}"></i>
+                            </div>
+                            <div class="file-name" title="${file.original_name}">
+                                ${file.original_name}
+                            </div>
+                            <div class="file-details">
+                                <span>${file.size_mb} MB</span>
+                                <span>${date}</span>
+                            </div>
+                            <div class="file-actions">
+                                <a href="/download/${file.id}" class="action-btn download-btn">
+                                    <i class="fas fa-download"></i> Download
+                                </a>
+                                <button class="action-btn delete-btn" onclick="deleteFile('${file.id}')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading files:', error);
+            }
+        }
+        
+        // Upload file
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) return;
+            
+            if (file.size > 500 * 1024 * 1024) {
+                showToast('error', 'Error', 'File must be less than 500MB');
+                fileInput.value = '';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    showToast('error', 'Upload Failed', result.error);
+                } else {
+                    showToast('success', 'Upload Complete', 
+                        `${result.filename} uploaded (${result.size_mb} MB)`);
+                    
+                    // Refresh data
+                    loadStorageInfo();
+                    loadFiles();
+                }
+                
+            } catch (error) {
+                showToast('error', 'Upload Failed', 'Network error');
+            }
+            
+            fileInput.value = '';
+        }
+        
+        // Delete file
+        async function deleteFile(fileId) {
+            if (!confirm('Are you sure you want to delete this file?')) return;
+            
+            try {
+                const response = await fetch(`/delete/${fileId}`, {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.error) {
+                    showToast('error', 'Delete Failed', result.error);
+                } else {
+                    showToast('success', 'File Deleted', 
+                        `${result.filename} deleted from ${result.deleted_from} nodes`);
+                    
+                    // Refresh data
+                    loadStorageInfo();
+                    loadFiles();
+                }
+                
+            } catch (error) {
+                showToast('error', 'Delete Failed', 'Network error');
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Auto-hide flash messages after 5 seconds
+            setTimeout(() => {
+                const flashes = document.querySelectorAll('.flash');
+                flashes.forEach(flash => {
+                    flash.style.opacity = '0';
+                    flash.style.transform = 'translateX(100%)';
+                    setTimeout(() => flash.remove(), 300);
+                });
+            }, 5000);
+            
+            // Auto-refresh every 30 seconds
+            setInterval(() => {
+                loadStorageInfo();
+                loadFiles();
+            }, 30000);
+        });
+    </script>
+</body>
+</html>

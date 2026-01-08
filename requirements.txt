@@ -1,0 +1,6 @@
+Flask
+Flask-Mail
+python-dotenv
+Werkzeug
+grpcio
+grpcio-tools

@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - AgriPredict Cloud</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a2980 0%, #26d0ce 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        /* Header */
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo i {
+            font-size: 32px;
+            color: #1a2980;
+        }
+        
+        .logo-content {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .logo-content h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .admin-info {
+            font-size: 14px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .admin-info span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .logout-btn {
+            color: #1a2980;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.3s ease;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(26, 41, 128, 0.1);
+        }
+        
+        .nav-btn {
+            background: linear-gradient(135deg, #1a2980, #26d0ce);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+        }
+        
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #1a2980, #26d0ce);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        
+        .stat-title {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .stat-detail {
+            color: #666;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        /* Storage Bar */
+        .storage-progress {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .progress-container {
+            background: #e0e0e0;
+            height: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #1a2980, #26d0ce);
+            border-radius: 8px;
+            transition: width 0.5s ease;
+        }
+        
+        /* Nodes Grid */
+        .nodes-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            margin-bottom: 25px;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        
+        .section-title {
+            font-size: 22px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .add-node-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nodes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .node-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            border: 2px solid #eee;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .node-card.active {
+            border-color: #4CAF50;
+        }
+        
+        .node-card.stopped {
+            border-color: #f44336;
+        }
+        
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f5f5f5;
+        }
+        
+        .node-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .node-id {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .node-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-active {
+            background: rgba(76, 175, 80, 0.1);
+            color: #4CAF50;
+        }
+        
+        .status-stopped {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+        }
+        
+        .node-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .detail-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .detail-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .detail-value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .storage-bar {
+            background: #e0e0e0;
+            height: 8px;
+            border-radius: 4px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        
+        .storage-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #1a2980, #26d0ce);
+            border-radius: 4px;
+        }
+        
+        .node-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .action-btn {
+            flex: 1;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .start-btn {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .stop-btn {
+            background: #f44336;
+            color: white;
+        }
+        
+        .delete-btn {
+            background: #ff9800;
+            color: white;
+        }
+        
+        .view-files-btn {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .action-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+        
+        /* Files Modal */
+        .files-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .files-modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .files-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f5f5f5;
+        }
+        
+        .close-files-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .files-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            transition: background 0.2s ease;
+        }
+        
+        .file-item:hover {
+            background: #f9f9f9;
+        }
+        
+        .file-info {
+            flex: 1;
+        }
+        
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .file-details {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+        
+        .no-files {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            color: white;
+            margin-top: 40px;
+            opacity: 0.8;
+            font-size: 14px;
+        }
+        
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+        
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: #1a2980;
+            outline: none;
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        
+        .modal-btn {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .modal-submit {
+            background: #1a2980;
+            color: white;
+        }
+        
+        .modal-cancel {
+            background: #f5f5f5;
+            color: #333;
+        }
+        
+        /* Flash Messages */
+        .flash-messages {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1001;
+        }
+        
+        .flash {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            max-width: 300px;
+        }
+        
+        .flash.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .flash.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .flash.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        /* Spinner */
+        .spinner {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner i {
+            font-size: 40px;
+            color: #1a2980;
+            animation: fa-spin 2s infinite linear;
+        }
+        
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transform: translateX(150%);
+            transition: transform 0.3s ease;
+            z-index: 1000;
+            max-width: 400px;
+        }
+        
+        .toast.show {
+            transform: translateX(0);
+        }
+        
+        .toast.success {
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .toast.error {
+            border-left: 4px solid #f44336;
+        }
+        
+        .toast.info {
+            border-left: 4px solid #2196F3;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nodes-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+            
+            .logo {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <i class="fas fa-server"></i>
+                <div class="logo-content">
+                    <h1>Admin Dashboard</h1>
+                    <div class="admin-info">
+                        <span>
+                            <i class="fas fa-user-shield"></i>
+                            Admin {{ username }}
+                        </span>
+                        <a href="/logout" class="logout-btn">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <a href="/" class="nav-btn">
+                <i class="fas fa-home"></i> User Dashboard
+            </a>
+        </div>
+        
+        <!-- Flash Messages -->
+        <div class="flash-messages" id="flashMessages">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">
+                            {% if category == 'success' %}
+                                <i class="fas fa-check-circle"></i>
+                            {% elif category == 'error' %}
+                                <i class="fas fa-exclamation-circle"></i>
+                            {% else %}
+                                <i class="fas fa-info-circle"></i>
+                            {% endif %}
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+        
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-server"></i>
+                </div>
+                <div class="stat-title">Active Nodes</div>
+                <div class="stat-value" id="activeNodes">{{ stats.active_nodes }}</div>
+                <div class="stat-detail">of {{ stats.total_nodes }} total</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-database"></i>
+                </div>
+                <div class="stat-title">Storage Usage</div>
+                <div class="stat-value" id="storageUsed">{{ stats.storage_percent }}%</div>
+                <div class="stat-detail">{{ stats.storage_used_gb }} GB / {{ stats.storage_total_gb }} GB</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-exchange-alt"></i>
+                </div>
+                <div class="stat-title">Total Transfers</div>
+                <div class="stat-value" id="activeTransfers">{{ stats.total_transfers }}</div>
+                <div class="stat-detail">across all nodes</div>
+            </div>
+            
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-file"></i>
+                </div>
+                <div class="stat-title">Total Files</div>
+                <div class="stat-value" id="totalFiles">{{ stats.total_files }}</div>
+                <div class="stat-detail">stored across nodes</div>
+            </div>
+        </div>
+        
+        <!-- Storage Progress -->
+        <div class="storage-progress">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <div style="font-weight: 600; color: #333;">Storage Distribution</div>
+                <div style="color: #666; font-size: 14px;" id="storagePercent">{{ stats.storage_percent }}% used</div>
+            </div>
+            <div class="progress-container">
+                <div class="progress-fill" id="storageProgress" data-width="{{ stats.storage_percent }}"></div>
+            </div>
+        </div>
+        
+        <!-- Nodes Section -->
+        <div class="nodes-section">
+            <div class="section-header">
+                <div class="section-title">
+                    <i class="fas fa-network-wired"></i> Network Nodes
+                </div>
+                <button class="add-node-btn" onclick="showAddNodeModal()">
+                    <i class="fas fa-plus"></i> Add Node
+                </button>
+            </div>
+            
+            <div class="nodes-grid" id="nodesContainer">
+                {% for node in nodes %}
+                <div class="node-card {{ node.status }}" id="node-{{ node.id }}">
+                    <div class="node-header">
+                        <div class="node-title">
+                            <div class="node-id">{{ node.id }}</div>
+                            <div class="node-status {{ 'status-active' if node.status == 'active' else 'status-stopped' }}">
+                                {{ 'ACTIVE' if node.status == 'active' else 'STOPPED' }}
+                            </div>
+                        </div>
+                        <div style="color: #666; font-size: 14px;">
+                            {% if node.status == 'active' %}
+                                <i class="fas fa-circle fa-beat" style="color: #4CAF50;"></i>
+                            {% else %}
+                                <i class="fas fa-circle" style="color: #f44336;"></i>
+                            {% endif %}
+                            {{ 'Online' if node.status == 'active' else 'Offline' }}
+                        </div>
+                    </div>
+                    
+                    <div class="node-details">
+                        <div class="detail-item">
+                            <div class="detail-label">CPU Cores</div>
+                            <div class="detail-value">{{ node.cpu_cores }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Memory</div>
+                            <div class="detail-value">{{ node.memory_gb }} GB</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Transfers</div>
+                            <div class="detail-value">{{ node.transfers }}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Bandwidth</div>
+                            <div class="detail-value">{{ node.bandwidth_mbps }} Mbps</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin: 15px 0;">
+                        <div style="display: flex; justify-content: space-between; font-size: 14px; color: #666;">
+                            <span>Storage Usage</span>
+                            {% set usage_percent = ((node.storage_used_mb / node.storage_total_mb) * 100)|round(1) %}
+                            <span>{{ usage_percent }}%</span>
+                        </div>
+                        <div class="storage-bar">
+                            <div class="storage-fill" data-width="{{ usage_percent }}"></div>
+                        </div>
+                        <div style="font-size: 12px; color: #666; text-align: center; margin-top: 5px;">
+                            {{ node.storage_used_mb|round(1) }} MB / {{ node.storage_total_mb }} MB
+                        </div>
+                        
+                        <button class="action-btn view-files-btn" 
+                                onclick="viewNodeFiles('{{ node.id }}')"
+                                style="width: 100%; margin-top: 10px;">
+                            <i class="fas fa-folder-open"></i> View Files ({{ node.files }})
+                        </button>
+                    </div>
+                    
+                    <div class="node-actions">
+                        {% if node.status == 'active' %}
+                            <button class="action-btn stop-btn" onclick="stopNode('{{ node.id }}')">
+                                <i class="fas fa-stop"></i> Stop
+                            </button>
+                        {% else %}
+                            <button class="action-btn start-btn" onclick="startNode('{{ node.id }}')">
+                                <i class="fas fa-play"></i> Start
+                            </button>
+                        {% endif %}
+                        <button class="action-btn delete-btn" onclick="deleteNode('{{ node.id }}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p>AgriPredict Distributed Cloud Storage v2.0</p>
+            <p>Replication Factor: 2 (Each file stored on 2 nodes)</p>
+            <p>Logged in as Admin: {{ username }}</p>
+        </div>
+    </div>
+    
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <i class="fas" id="toastIcon"></i>
+        <div>
+            <div id="toastTitle" style="font-weight: 600;"></div>
+            <div id="toastMessage" style="font-size: 14px; color: #666;"></div>
+        </div>
+    </div>
+    
+    <!-- Files Modal -->
+    <div class="files-modal" id="filesModal">
+        <div class="files-modal-content">
+            <div class="files-modal-header">
+                <h2 style="color: #333;" id="filesModalTitle">Node Files</h2>
+                <button class="close-files-modal" onclick="closeFilesModal()">&times;</button>
+            </div>
+            
+            <div class="files-list" id="filesList">
+                <!-- Files will be loaded here -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Add Node Modal -->
+    <div class="modal" id="addNodeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 style="color: #333;">Add New Node</h2>
+                <button class="close-modal" onclick="closeAddNodeModal()">&times;</button>
+            </div>
+            
+            <div class="form-group">
+                <label for="nodeName">Node Name</label>
+                <input type="text" id="nodeName" placeholder="Enter node name" value="New Node">
+            </div>
+            
+            <div class="form-group">
+                <label for="cpuCores">CPU Cores</label>
+                <select id="cpuCores">
+                    <option value="2">2 Cores</option>
+                    <option value="4" selected>4 Cores</option>
+                    <option value="6">6 Cores</option>
+                    <option value="8">8 Cores</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="memoryGB">Memory (GB)</label>
+                <select id="memoryGB">
+                    <option value="4">4 GB</option>
+                    <option value="8" selected>8 GB</option>
+                    <option value="12">12 GB</option>
+                    <option value="16">16 GB</option>
+                    <option value="24">24 GB</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="bandwidth">Bandwidth (Mbps)</label>
+                <select id="bandwidth">
+                    <option value="800">800 Mbps</option>
+                    <option value="1000">1000 Mbps</option>
+                    <option value="1200">1200 Mbps</option>
+                    <option value="1400" selected>1400 Mbps</option>
+                    <option value="2000">2000 Mbps</option>
+                </select>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="modal-btn modal-submit" onclick="addNewNode()">
+                    <i class="fas fa-plus"></i> Add Node
+                </button>
+                <button class="modal-btn modal-cancel" onclick="closeAddNodeModal()">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Auto-hide flash messages after 5 seconds
+            setTimeout(() => {
+                const flashes = document.querySelectorAll('.flash');
+                flashes.forEach(flash => {
+                    flash.style.opacity = '0';
+                    flash.style.transform = 'translateX(100%)';
+                    setTimeout(() => flash.remove(), 300);
+                });
+            }, 5000);
+            
+            // Auto-refresh stats every 30 seconds
+            setInterval(refreshStats, 30000);
+        });
+        
+        // Show toast notification
+        function showToast(type, title, message, duration = 3000) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toastIcon');
+            const toastTitle = document.getElementById('toastTitle');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            if (type === 'success') {
+                icon.className = 'fas fa-check-circle';
+                toast.className = 'toast success';
+            } else if (type === 'error') {
+                icon.className = 'fas fa-exclamation-circle';
+                toast.className = 'toast error';
+            } else {
+                icon.className = 'fas fa-info-circle';
+                toast.className = 'toast info';
+            }
+            
+            toastTitle.textContent = title;
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            
+            setTimeout(() => toast.classList.remove('show'), duration);
+        }
+        
+        // View node files
+        async function viewNodeFiles(nodeId) {
+            try {
+                const modal = document.getElementById('filesModal');
+                const title = document.getElementById('filesModalTitle');
+                const filesList = document.getElementById('filesList');
+                
+                title.textContent = `Files on Node ${nodeId}`;
+                filesList.innerHTML = '<div class="spinner"><i class="fas fa-spinner fa-spin"></i></div><p style="text-align: center; color: #666;">Loading files...</p>';
+                
+                modal.style.display = 'flex';
+                
+                const response = await fetch(`/admin/api/node-files/${nodeId}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load files: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.files && data.files.length > 0) {
+                    let html = '';
+                    data.files.forEach(file => {
+                        const uploadDate = file.upload_date !== 'Unknown' 
+                            ? new Date(file.upload_date).toLocaleDateString()
+                            : 'Unknown';
+                        
+                        html += `
+                            <div class="file-item">
+                                <div class="file-info">
+                                    <div class="file-name" title="${file.original_name}">${file.original_name}</div>
+                                    <div class="file-details">
+                                        <span><i class="fas fa-weight-hanging"></i> ${file.size_mb} MB</span>
+                                        <span><i class="fas fa-user"></i> ${file.owner}</span>
+                                        <span><i class="fas fa-calendar"></i> ${uploadDate}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <small style="color: #666;">ID: ${file.id}</small>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    filesList.innerHTML = html;
+                } else {
+                    filesList.innerHTML = `
+                        <div class="no-files">
+                            <i class="fas fa-folder-open" style="font-size: 48px; margin-bottom: 20px; opacity: 0.5;"></i>
+                            <h3>No files stored</h3>
+                            <p>This node doesn't contain any files yet.</p>
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error loading files:', error);
+                document.getElementById('filesList').innerHTML = `
+                    <div class="no-files">
+                        <i class="fas fa-exclamation-triangle" style="font-size: 48px; margin-bottom: 20px; color: #f44336;"></i>
+                        <h3>Error Loading Files</h3>
+                        <p>Failed to load files from the server.</p>
+                        <p style="font-size: 12px; color: #999; margin-top: 10px;">${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Close files modal
+        function closeFilesModal() {
+            document.getElementById('filesModal').style.display = 'none';
+        }
+        
+        // Close modal when clicking outside
+        document.addEventListener('click', function(event) {
+            const modal = document.getElementById('filesModal');
+            if (event.target === modal) {
+                closeFilesModal();
+            }
+        });
+        
+        // Refresh stats
+        async function refreshStats() {
+            try {
+                const response = await fetch('/api/nodes');
+                const data = await response.json();
+                
+                if (data.stats) {
+                    document.getElementById('activeNodes').textContent = data.stats.active_nodes;
+                    document.getElementById('storageUsed').textContent = `${data.stats.storage_percent}%`;
+                    document.getElementById('activeTransfers').textContent = data.stats.total_transfers;
+                    document.getElementById('totalFiles').textContent = data.stats.total_files;
+                    document.getElementById('storagePercent').textContent = `${data.stats.storage_percent}% used`;
+                    document.getElementById('storageProgress').style.width = `${data.stats.storage_percent}%`;
+                }
+            } catch (error) {
+                console.error('Error refreshing stats:', error);
+            }
+        }
+        
+        // Start a node
+        async function startNode(nodeId) {
+            if (!confirm(`Start node ${nodeId}? This will make the node available for file storage.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/admin/api/start-node/${nodeId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Node Started', `Node ${nodeId} has been started successfully.`);
+                    // Update the node card UI
+                    updateNodeStatus(nodeId, 'active');
+                    refreshStats();
+                } else {
+                    showToast('error', 'Error', result.error || 'Failed to start node');
+                }
+            } catch (error) {
+                console.error('Error starting node:', error);
+                showToast('error', 'Network Error', 'Failed to connect to server');
+            }
+        }
+        
+        // Stop a node
+        async function stopNode(nodeId) {
+            if (!confirm(`Stop node ${nodeId}? Files on this node will be unavailable while stopped.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/admin/api/stop-node/${nodeId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Node Stopped', `Node ${nodeId} has been stopped successfully.`);
+                    // Update the node card UI
+                    updateNodeStatus(nodeId, 'stopped');
+                    refreshStats();
+                } else {
+                    showToast('error', 'Error', result.error || 'Failed to stop node');
+                }
+            } catch (error) {
+                console.error('Error stopping node:', error);
+                showToast('error', 'Network Error', 'Failed to connect to server');
+            }
+        }
+        
+        // Delete a node
+        async function deleteNode(nodeId) {
+            if (!confirm(`DELETE NODE ${nodeId}? ⚠️ WARNING: This will permanently remove the node and all files stored on it. This action cannot be undone.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/admin/api/delete-node/${nodeId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Node Deleted', `Node ${nodeId} has been deleted successfully.`);
+                    // Remove the node card from UI with animation
+                    const nodeCard = document.getElementById(`node-${nodeId}`);
+                    if (nodeCard) {
+                        nodeCard.style.opacity = '0';
+                        nodeCard.style.transform = 'scale(0.9)';
+                        setTimeout(() => {
+                            nodeCard.remove();
+                            refreshStats();
+                        }, 300);
+                    }
+                } else {
+                    showToast('error', 'Error', result.error || 'Failed to delete node');
+                }
+            } catch (error) {
+                console.error('Error deleting node:', error);
+                showToast('error', 'Network Error', 'Failed to connect to server');
+            }
+        }
+        
+        // Update node status in UI
+        function updateNodeStatus(nodeId, status) {
+            const nodeCard = document.getElementById(`node-${nodeId}`);
+            if (!nodeCard) return;
+            
+            // Update class
+            nodeCard.className = `node-card ${status}`;
+            
+            // Update status text
+            const statusElement = nodeCard.querySelector('.node-status');
+            if (statusElement) {
+                if (status === 'active') {
+                    statusElement.className = 'node-status status-active';
+                    statusElement.textContent = 'ACTIVE';
+                } else {
+                    statusElement.className = 'node-status status-stopped';
+                    statusElement.textContent = 'STOPPED';
+                }
+            }
+            
+            // Update status indicator
+            const indicator = nodeCard.querySelector('.fa-circle');
+            if (indicator) {
+                if (status === 'active') {
+                    indicator.style.color = '#4CAF50';
+                    indicator.classList.add('fa-beat');
+                } else {
+                    indicator.style.color = '#f44336';
+                    indicator.classList.remove('fa-beat');
+                }
+            }
+            
+            // Update online/offline text
+            const onlineText = nodeCard.querySelector('.fa-circle').parentNode;
+            if (onlineText) {
+                onlineText.innerHTML = status === 'active' 
+                    ? '<i class="fas fa-circle fa-beat" style="color: #4CAF50;"></i> Online' 
+                    : '<i class="fas fa-circle" style="color: #f44336;"></i> Offline';
+            }
+            
+            // Update action buttons
+            const actionsContainer = nodeCard.querySelector('.node-actions');
+            if (actionsContainer) {
+                if (status === 'active') {
+                    actionsContainer.innerHTML = `
+                        <button class="action-btn stop-btn" onclick="stopNode('${nodeId}')">
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                        <button class="action-btn delete-btn" onclick="deleteNode('${nodeId}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    `;
+                } else {
+                    actionsContainer.innerHTML = `
+                        <button class="action-btn start-btn" onclick="startNode('${nodeId}')">
+                            <i class="fas fa-play"></i> Start
+                        </button>
+                        <button class="action-btn delete-btn" onclick="deleteNode('${nodeId}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    `;
+                }
+            }
+        }
+        
+        // Add node modal functions
+        function showAddNodeModal() {
+            document.getElementById('addNodeModal').style.display = 'flex';
+        }
+        
+        function closeAddNodeModal() {
+            document.getElementById('addNodeModal').style.display = 'none';
+        }
+        
+        async function addNewNode() {
+            const nodeName = document.getElementById('nodeName').value.trim();
+            const cpuCores = document.getElementById('cpuCores').value;
+            const memoryGB = document.getElementById('memoryGB').value;
+            const bandwidth = document.getElementById('bandwidth').value;
+            
+            if (!nodeName) {
+                showToast('error', 'Validation Error', 'Please enter a node name');
+                return;
+            }
+            
+            const nodeData = {
+                name: nodeName,
+                cpu_cores: parseInt(cpuCores),
+                memory_gb: parseInt(memoryGB),
+                bandwidth_mbps: parseInt(bandwidth)
+            };
+            
+            try {
+                const response = await fetch('/admin/api/add-node', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(nodeData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast('success', 'Node Added', `Node ${result.node?.id || 'New'} has been added successfully.`);
+                    closeAddNodeModal();
+                    // Reset form
+                    document.getElementById('nodeName').value = 'New Node';
+                    document.getElementById('cpuCores').value = '4';
+                    document.getElementById('memoryGB').value = '8';
+                    document.getElementById('bandwidth').value = '1400';
+                    // Refresh the page to show new node
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showToast('error', 'Error', result.error || 'Failed to add node');
+                }
+            } catch (error) {
+                console.error('Error adding node:', error);
+                showToast('error', 'Network Error', 'Failed to connect to server');
+            }
+        }
+        
+        // Close modal on ESC key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeFilesModal();
+                closeAddNodeModal();
+            }
+        });
+    </script>
+</body>
+</html>

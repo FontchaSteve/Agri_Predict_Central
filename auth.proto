@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package auth;
+
+service AuthService {
+  rpc RegisterUser(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc VerifyOTP(VerifyOTPRequest) returns (VerifyOTPResponse);
+  rpc GenerateOTP(GenerateOTPRequest) returns (GenerateOTPResponse);
+}
+
+message RegisterRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message RegisterResponse {
+  bool success = 1;
+  string message = 2;
+  int32 user_id = 3;
+  string role = 4;  // 'user' or 'admin'
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  bool success = 1;
+  string message = 2;
+  int32 user_id = 3;
+  string username = 4;
+  string email = 5;
+  string role = 6;
+  bool needs_otp = 7;
+  bool is_admin = 8;  // Quick check for bypassing OTP
+  string otp_code = 9;  // Only if console fallback
+}
+
+message VerifyOTPRequest {
+  int32 user_id = 1;
+  string otp_code = 2;
+}
+
+message VerifyOTPResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message GenerateOTPRequest {
+  int32 user_id = 1;
+}
+
+message GenerateOTPResponse {
+  string otp_code = 1;
+  bool sent = 2;  // True if emailed, false if console
+}
